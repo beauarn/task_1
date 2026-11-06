@@ -305,27 +305,79 @@ namespace ResilientFormAutomation.Services
                     cur = host.shadowRoot;
                 }
 
-                var fname = cur.querySelector('#fname, [name=""fname""], [name=""First Name""], [placeholder*=""Name""], input[type=""text""]');
+                var textInputs = Array.from(cur.querySelectorAll('input:not([type=""hidden""]):not([type=""radio""]):not([type=""checkbox""]):not([type=""submit""]):not([type=""button""]), textarea'));
+                var fname = textInputs.find(function(inp) {
+                    var str = (inp.getAttribute('placeholder') || '') + ' ' + (inp.getAttribute('aria-label') || '') + ' ' + (inp.name || '') + ' ' + (inp.id || '');
+                    return /first|given/i.test(str) && !/last|user|middle|sur/i.test(str);
+                });
+                if (!fname) {
+                    var labels = Array.from(cur.querySelectorAll('label, th, td, span, div, p, b, strong'));
+                    var fnLabel = labels.find(function(l) { return /first\s*name|given\s*name/i.test(l.textContent || '') && !/last/i.test(l.textContent || ''); });
+                    if (fnLabel) {
+                        var lblFor = fnLabel.getAttribute('for');
+                        if (lblFor) fname = cur.querySelector('#' + CSS.escape(lblFor));
+                        if (!fname && fnLabel.parentElement) {
+                            fname = fnLabel.parentElement.querySelector('input:not([type=""hidden""]):not([type=""radio""]):not([type=""checkbox""])');
+                        }
+                    }
+                }
+                if (!fname) {
+                    fname = textInputs.find(function(inp) {
+                        var str = (inp.getAttribute('placeholder') || '') + ' ' + (inp.getAttribute('aria-label') || '') + ' ' + (inp.name || '') + ' ' + (inp.id || '');
+                        return /name/i.test(str) && !/last|user|middle|sur/i.test(str);
+                    });
+                }
+                if (!fname && textInputs.length > 0) {
+                    fname = textInputs[0];
+                }
                 if (fname) {
                     fname.value = firstNameVal;
                     fname.dispatchEvent(new Event('input', { bubbles: true }));
                     fname.dispatchEvent(new Event('change', { bubbles: true }));
                 }
 
-                var male = cur.querySelector('#male, input[value=""Male""], input[name*=""gender""][value=""Male""]');
+                var radios = Array.from(cur.querySelectorAll('input[type=""radio""]'));
+                var male = radios.find(function(r) {
+                    var v = (r.value || '').trim();
+                    var i = (r.id || '').trim();
+                    return (/\bmale\b/i.test(v) || /\bmale\b/i.test(i)) && !/female/i.test(v) && !/female/i.test(i);
+                });
                 if (!male) {
-                    var radios = Array.from(cur.querySelectorAll('input[type=""radio""]'));
-                    male = radios.find(r => r.value === 'Male' || r.id === 'male') || radios[0];
+                    male = radios.find(function(r) {
+                        var p = r.parentElement;
+                        var t = (p ? p.textContent : '') + ' ' + (r.nextSibling ? r.nextSibling.textContent : '');
+                        return /\bmale\b/i.test(t) && !/female/i.test(t);
+                    });
+                }
+                if (!male && radios.length > 0) {
+                    male = radios[0];
                 }
                 if (male) {
                     male.checked = true;
                     male.dispatchEvent(new Event('change', { bubbles: true }));
                 }
 
-                var state = cur.querySelector('#state, select');
+                var selects = Array.from(cur.querySelectorAll('select'));
+                var lowerTarget = targetState.toLowerCase();
+                var state = selects.find(function(s) {
+                    return Array.from(s.options).some(function(o) {
+                        var ot = (o.text || '').toLowerCase();
+                        var ov = (o.value || '').toLowerCase();
+                        return ot.indexOf(lowerTarget) !== -1 || ov.indexOf(lowerTarget) !== -1 || ot === 'us' || ot === 'usa';
+                    });
+                });
+                if (!state) {
+                    state = selects.find(function(s) {
+                        var str = (s.name || '') + ' ' + (s.id || '') + ' ' + (s.parentElement ? s.parentElement.textContent : '');
+                        return /state|province/i.test(str);
+                    });
+                }
+                if (!state && selects.length > 0) {
+                    state = selects[0];
+                }
+
                 var selectedStateText = '';
                 if (state) {
-                    var lowerTarget = targetState.toLowerCase();
                     for (var j = 0; j < state.options.length; j++) {
                         var ot = state.options[j].text.toLowerCase();
                         var ov = state.options[j].value.toLowerCase();

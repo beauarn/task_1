@@ -103,7 +103,7 @@ namespace ResilientFormAutomation.Locators
             if (inputs.Count == 0) return candidates;
 
             var rawLabels = _driver.FindElements(By.XPath(
-                "//label | //*[contains(@class,'label') or contains(@class,'title') or contains(@class,'legend') or contains(@class,'field-name') or @role='label'] | //dt | //b | //strong"
+                "//label | //th | //td | //span | //p | //h3 | //h4 | //h5 | //h6 | //*[contains(@class,'label') or contains(@class,'title') or contains(@class,'legend') or contains(@class,'field-name') or @role='label'] | //dt | //b | //strong"
             )).ToList();
             var labelData = rawLabels.Select(l =>
             {
@@ -502,7 +502,7 @@ namespace ResilientFormAutomation.Locators
 
             var selects = _driver.FindElements(By.TagName("select")).ToList();
 
-            var stateLabels = _driver.FindElements(By.XPath("//label | //span[contains(@class,'label')]"))
+            var stateLabels = _driver.FindElements(By.XPath("//label | //th | //td | //span | //p | //h3 | //h4 | //h5 | //h6 | //*[contains(@class,'label') or contains(@class,'title') or contains(@class,'legend') or @role='label']"))
                 .Where(l => StateKeywords.Any(k => (l.Text ?? "").ToLowerInvariant().Contains(k) || (l.GetAttribute("name") ?? "").ToLowerInvariant().Contains(k)))
                 .ToList();
 
