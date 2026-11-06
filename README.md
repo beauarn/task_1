@@ -296,7 +296,7 @@ D:\task 1\
 ├── Screenshots\                      # Auto-captured high-resolution visual audit trails
 ├── Services\
 │   ├── FormInteractionService.cs     # Universal recursive crawler & form automation engine
-│   ├── MutationTestRunner.cs         # 8-scenario mutation matrix test harness
+│   ├── ScenarioRunner.cs             # 8-scenario mutation matrix test harness
 │   └── WebDriverFactory.cs           # Centralized cross-browser factory (Chrome, Brave, Edge, Firefox)
 ├── Program.cs                        # CLI entry point, argument parsing, telemetry display
 ├── appsettings.json                  # Base configuration file
