@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Support.UI;
@@ -48,6 +50,9 @@ namespace ResilientFormAutomation.Services
             _driver.Navigate().GoToUrl(_settings.TargetUrl);
             WaitForPageReady();
 
+            // Run deep DOM & Shadow Root diagnostics
+            RunDeepDomDiagnostics();
+
             // Determine execution contexts (Main document, IFrame without ID, IFrame with ID)
             var contexts = DetermineExecutionContexts();
 
@@ -73,13 +78,63 @@ namespace ResilientFormAutomation.Services
             return report;
         }
 
+        private void RunDeepDomDiagnostics()
+        {
+            try
+            {
+                Console.ForegroundColor = ConsoleColor.DarkGray;
+                Console.WriteLine("🔎 SCANNING DEEP DOM TREE (Shadow DOMs, Custom Elements, Frames)...");
+
+                var js = (IJavaScriptExecutor)_driver;
+                var script = @"
+                    function findShadowHosts(root) {
+                        var hosts = [];
+                        var all = root.querySelectorAll('*');
+                        for (var i = 0; i < all.length; i++) {
+                            if (all[i].shadowRoot) {
+                                hosts.push({
+                                    tag: all[i].tagName.toLowerCase(),
+                                    id: all[i].id,
+                                    className: all[i].className,
+                                    inputs: all[i].shadowRoot.querySelectorAll('input, select, textarea').length
+                                });
+                                hosts = hosts.concat(findShadowHosts(all[i].shadowRoot));
+                            }
+                        }
+                        return hosts;
+                    }
+                    return JSON.stringify(findShadowHosts(document));
+                ";
+
+                var result = js.ExecuteScript(script)?.ToString() ?? "[]";
+                Console.WriteLine($"   Root Document Shadow Hosts: {result}");
+                Console.ResetColor();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"   Diagnostic notice: {ex.Message}");
+            }
+        }
+
+        private enum ContextType
+        {
+            StandardDocument,
+            IFrame,
+            ShadowDom,
+            IFrameInShadow
+        }
+
         private class FormContextInfo
         {
             public string Name { get; set; } = string.Empty;
+            public ContextType Type { get; set; } = ContextType.StandardDocument;
             public List<int> FrameHierarchy { get; set; } = new List<int>();
             public string IframeId { get; set; } = string.Empty;
             public string IframeSrc { get; set; } = string.Empty;
-            public bool IsIframe => FrameHierarchy.Count > 0;
+            public List<string> ShadowHostChain { get; set; } = new List<string>();
+            public int ShadowIframeIndex { get; set; } = 0;
+            public List<int> ParentFrameHierarchy { get; set; } = new List<int>();
+            public bool IsIframe => Type == ContextType.IFrame || Type == ContextType.IFrameInShadow;
         }
 
         private bool SwitchToHierarchy(List<int> hierarchy)
@@ -131,6 +186,7 @@ namespace ResilientFormAutomation.Services
                 contexts.Add(new FormContextInfo 
                 { 
                     Name = "Main Document (Default Content)", 
+                    Type = ContextType.StandardDocument,
                     FrameHierarchy = new List<int>() 
                 });
             }
@@ -138,10 +194,13 @@ namespace ResilientFormAutomation.Services
             // 2. Discover all iframes recursively (depth 1 to 4)
             DiscoverFramesRecursive(new List<int>(), contexts, 0, 4);
 
+            // 3. Discover all Shadow DOMs and Shadow IFrames (in main document)
+            DiscoverShadowContexts(new List<int>(), contexts);
+
             // If no contexts matched, fallback to main document
             if (contexts.Count == 0)
             {
-                contexts.Add(new FormContextInfo { Name = "Default Document Context", FrameHierarchy = new List<int>() });
+                contexts.Add(new FormContextInfo { Name = "Default Document Context", Type = ContextType.StandardDocument, FrameHierarchy = new List<int>() });
             }
 
             return contexts;
@@ -210,11 +269,15 @@ namespace ResilientFormAutomation.Services
                         contexts.Add(new FormContextInfo
                         {
                             Name = label,
+                            Type = ContextType.IFrame,
                             FrameHierarchy = childPath,
                             IframeId = id,
                             IframeSrc = src
                         });
                     }
+
+                    // Also check for any Shadow DOMs inside this frame
+                    DiscoverShadowContexts(childPath, contexts);
 
                     // Recurse deeper inside this frame to find child/grandchild iframes!
                     DiscoverFramesRecursive(childPath, contexts, currentDepth + 1, maxDepth);
@@ -233,6 +296,135 @@ namespace ResilientFormAutomation.Services
             }
         }
 
+        private void DiscoverShadowContexts(List<int> parentFramePath, List<FormContextInfo> contexts)
+        {
+            try
+            {
+                if (parentFramePath.Count > 0)
+                {
+                    if (!SwitchToHierarchy(parentFramePath)) return;
+                }
+                else
+                {
+                    _driver.SwitchTo().DefaultContent();
+                }
+
+                var js = (IJavaScriptExecutor)_driver;
+                var script = @"
+                    function scanShadowTree(root, currentChain) {
+                        var found = [];
+                        var all = root.querySelectorAll('*');
+                        for (var i = 0; i < all.length; i++) {
+                            var el = all[i];
+                            if (el.shadowRoot) {
+                                var tag = el.tagName.toLowerCase();
+                                var newChain = currentChain.concat([tag]);
+                                var inputs = el.shadowRoot.querySelectorAll('input, select, textarea');
+                                var iframes = el.shadowRoot.querySelectorAll('iframe');
+
+                                var hasCandidateInputs = el.shadowRoot.querySelectorAll('input:not([type=""hidden""]):not([type=""submit""]):not([type=""button""]):not([type=""checkbox""])').length > 0
+                                    || el.shadowRoot.querySelectorAll('input[type=""radio""]').length > 0
+                                    || el.shadowRoot.querySelectorAll('select').length > 0;
+
+                                if (inputs.length > 0 && hasCandidateInputs) {
+                                    found.push({
+                                        type: 'shadow',
+                                        chain: newChain,
+                                        inputCount: inputs.length
+                                    });
+                                }
+
+                                for (var j = 0; j < iframes.length; j++) {
+                                    var ifr = iframes[j];
+                                    found.push({
+                                        type: 'shadow_iframe',
+                                        chain: newChain,
+                                        iframeIndex: j,
+                                        iframeId: ifr.id || '',
+                                        iframeSrc: ifr.src || ''
+                                    });
+                                }
+
+                                found = found.concat(scanShadowTree(el.shadowRoot, newChain));
+                            }
+                        }
+                        return found;
+                    }
+                    return JSON.stringify(scanShadowTree(document, []));
+                ";
+
+                var jsonStr = js.ExecuteScript(script)?.ToString();
+                if (string.IsNullOrEmpty(jsonStr) || jsonStr == "[]") return;
+
+                using var doc = JsonDocument.Parse(jsonStr);
+                foreach (var item in doc.RootElement.EnumerateArray())
+                {
+                    string itemType = item.GetProperty("type").GetString() ?? "";
+                    var chainList = new List<string>();
+                    foreach (var ch in item.GetProperty("chain").EnumerateArray())
+                    {
+                        chainList.Add(ch.GetString() ?? "");
+                    }
+
+                    string chainDisplay = string.Join(" > ", chainList);
+
+                    if (itemType == "shadow")
+                    {
+                        bool shouldInclude = _settings.TargetFrame.Equals("all", StringComparison.OrdinalIgnoreCase) ||
+                                             _settings.TargetFrame.Equals("shadow", StringComparison.OrdinalIgnoreCase);
+                        if (shouldInclude)
+                        {
+                            string name = parentFramePath.Count > 0
+                                ? $"Shadow DOM [{chainDisplay}] (in Frame #{string.Join(">", parentFramePath)})"
+                                : $"Shadow DOM [{chainDisplay}]";
+
+                            contexts.Add(new FormContextInfo
+                            {
+                                Name = name,
+                                Type = ContextType.ShadowDom,
+                                ShadowHostChain = chainList,
+                                ParentFrameHierarchy = new List<int>(parentFramePath)
+                            });
+                        }
+                    }
+                    else if (itemType == "shadow_iframe")
+                    {
+                        int ifrIdx = item.GetProperty("iframeIndex").GetInt32();
+                        string ifrId = item.GetProperty("iframeId").GetString() ?? "";
+                        string ifrSrc = item.GetProperty("iframeSrc").GetString() ?? "";
+
+                        bool shouldInclude = _settings.TargetFrame.Equals("all", StringComparison.OrdinalIgnoreCase) ||
+                                             _settings.TargetFrame.Equals("shadow", StringComparison.OrdinalIgnoreCase) ||
+                                             (!string.IsNullOrEmpty(ifrId) && _settings.TargetFrame.Equals(ifrId, StringComparison.OrdinalIgnoreCase));
+                        if (shouldInclude)
+                        {
+                            string idLabel = string.IsNullOrEmpty(ifrId) ? $"index #{ifrIdx}" : $"id '{ifrId}'";
+                            string name = $"IFrame ({idLabel}) inside Shadow DOM [{chainDisplay}]";
+
+                            contexts.Add(new FormContextInfo
+                            {
+                                Name = name,
+                                Type = ContextType.IFrameInShadow,
+                                ShadowHostChain = chainList,
+                                ShadowIframeIndex = ifrIdx,
+                                IframeId = ifrId,
+                                IframeSrc = ifrSrc,
+                                ParentFrameHierarchy = new List<int>(parentFramePath)
+                            });
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"  ℹ Shadow discovery notice: {ex.Message}");
+            }
+            finally
+            {
+                _driver.SwitchTo().DefaultContent();
+            }
+        }
+
         private void ExecuteContext(FormContextInfo ctx, AutomationReport report)
         {
             Console.WriteLine();
@@ -242,6 +434,24 @@ namespace ResilientFormAutomation.Services
             Console.WriteLine("-------------------------------------------------------------------------------");
             Console.ResetColor();
 
+            switch (ctx.Type)
+            {
+                case ContextType.ShadowDom:
+                    ExecuteShadowContext(ctx, report);
+                    break;
+
+                case ContextType.IFrameInShadow:
+                    ExecuteIframeInShadowContext(ctx, report);
+                    break;
+
+                default:
+                    ExecuteStandardContext(ctx, report);
+                    break;
+            }
+        }
+
+        private void ExecuteStandardContext(FormContextInfo ctx, AutomationReport report)
+        {
             if (!SwitchToHierarchy(ctx.FrameHierarchy))
             {
                 Console.WriteLine($"⚠ Could not switch to context {ctx.Name}");
@@ -271,6 +481,329 @@ namespace ResilientFormAutomation.Services
             report.Steps.Add(step3);
 
             _driver.SwitchTo().DefaultContent();
+        }
+
+        private void ExecuteShadowContext(FormContextInfo ctx, AutomationReport report)
+        {
+            var sw = Stopwatch.StartNew();
+            try
+            {
+                if (ctx.ParentFrameHierarchy.Count > 0)
+                {
+                    if (!SwitchToHierarchy(ctx.ParentFrameHierarchy)) return;
+                }
+                else
+                {
+                    _driver.SwitchTo().DefaultContent();
+                }
+
+                var js = (IJavaScriptExecutor)_driver;
+                var script = @"
+                    var chain = arguments[0];
+                    var firstNameVal = arguments[1];
+                    var genderVal = arguments[2];
+                    var stateVal = arguments[3];
+                    var highlight = arguments[4];
+
+                    var cur = document;
+                    for (var i = 0; i < chain.length; i++) {
+                        var host = (cur === document) ? document.querySelector(chain[i]) : cur.querySelector(chain[i]);
+                        if (!host || !host.shadowRoot) {
+                            return JSON.stringify({ success: false, error: 'Host not found: ' + chain[i] });
+                        }
+                        cur = host.shadowRoot;
+                    }
+
+                    // 1. Resolve & Fill First Name
+                    var inputs = Array.from(cur.querySelectorAll('input:not([type=""hidden""]):not([type=""radio""]):not([type=""checkbox""]):not([type=""submit""]):not([type=""button""])'));
+                    var bestFname = null;
+                    var bestFnameScore = 0;
+                    inputs.forEach(function(inp) {
+                        var score = 10;
+                        var id = (inp.id || '').toLowerCase();
+                        var name = (inp.name || '').toLowerCase();
+                        var ph = (inp.placeholder || '').toLowerCase();
+                        var aria = (inp.getAttribute('aria-label') || '').toLowerCase();
+                        
+                        if (id === 'fname' || name === 'fname') score += 90;
+                        if (id.includes('first') || name.includes('first')) score += 80;
+                        if (ph.includes('first') || ph.includes('name')) score += 70;
+                        if (aria.includes('first') || aria.includes('name')) score += 60;
+                        
+                        var labels = Array.from(cur.querySelectorAll('label'));
+                        labels.forEach(function(lbl) {
+                            var txt = (lbl.innerText || lbl.textContent || '').toLowerCase().trim();
+                            if (txt.includes('first name') || txt.includes('firstname')) {
+                                if (lbl.getAttribute('for') === inp.id || lbl.contains(inp)) score += 90;
+                            }
+                        });
+                        if (score > bestFnameScore) {
+                            bestFnameScore = score;
+                            bestFname = inp;
+                        }
+                    });
+
+                    var fnameActual = '';
+                    if (bestFname) {
+                        try { bestFname.scrollIntoView({behavior: 'smooth', block: 'center'}); } catch(e){}
+                        bestFname.value = firstNameVal;
+                        bestFname.dispatchEvent(new Event('input', { bubbles: true }));
+                        bestFname.dispatchEvent(new Event('change', { bubbles: true }));
+                        if (highlight) {
+                            bestFname.style.outline = '3px solid #28a745';
+                            bestFname.style.backgroundColor = '#d4edda';
+                        }
+                        fnameActual = bestFname.value;
+                    }
+
+                    // 2. Resolve & Select Gender
+                    var radios = Array.from(cur.querySelectorAll('input[type=""radio""]'));
+                    var bestRadio = null;
+                    var bestRadioScore = 0;
+                    var targetGender = genderVal.toLowerCase();
+                    radios.forEach(function(r) {
+                        var score = 10;
+                        var val = (r.value || '').toLowerCase();
+                        var id = (r.id || '').toLowerCase();
+                        if (val === targetGender || id === targetGender) score += 90;
+                        
+                        var labels = Array.from(cur.querySelectorAll('label'));
+                        labels.forEach(function(lbl) {
+                            var txt = (lbl.innerText || lbl.textContent || '').toLowerCase().trim();
+                            if (txt === targetGender) {
+                                if (lbl.getAttribute('for') === r.id || lbl.contains(r)) score += 85;
+                            }
+                        });
+                        if (score > bestRadioScore) {
+                            bestRadioScore = score;
+                            bestRadio = r;
+                        }
+                    });
+
+                    var genderActual = '';
+                    if (bestRadio) {
+                        try { bestRadio.scrollIntoView({behavior: 'smooth', block: 'center'}); } catch(e){}
+                        bestRadio.checked = true;
+                        try { bestRadio.click(); } catch(e){}
+                        bestRadio.dispatchEvent(new Event('change', { bubbles: true }));
+                        if (highlight) {
+                            bestRadio.style.outline = '3px solid #28a745';
+                        }
+                        genderActual = bestRadio.checked ? (genderVal + ' (Selected)') : (genderVal + ' (Clicked)');
+                    }
+
+                    // 3. Resolve & Select State
+                    var selects = Array.from(cur.querySelectorAll('select'));
+                    var bestSelect = null;
+                    var bestSelectScore = 0;
+                    selects.forEach(function(s) {
+                        var score = 10;
+                        var id = (s.id || '').toLowerCase();
+                        var name = (s.name || '').toLowerCase();
+                        if (id === 'state' || name === 'state') score += 90;
+                        if (id.includes('state') || name.includes('state')) score += 70;
+                        if (id.includes('country') || name.includes('country')) score += 50;
+                        
+                        for (var o = 0; o < s.options.length; o++) {
+                            var ot = s.options[o].text.toLowerCase();
+                            if (ot.includes('united states') || ot === 'us' || ot === 'usa') {
+                                score += 50;
+                                break;
+                            }
+                        }
+                        if (score > bestSelectScore) {
+                            bestSelectScore = score;
+                            bestSelect = s;
+                        }
+                    });
+
+                    var stateActual = '';
+                    if (bestSelect) {
+                        try { bestSelect.scrollIntoView({behavior: 'smooth', block: 'center'}); } catch(e){}
+                        var targetState = stateVal.toLowerCase();
+                        for (var j = 0; j < bestSelect.options.length; j++) {
+                            var opt = bestSelect.options[j];
+                            var ot = opt.text.toLowerCase();
+                            var ov = (opt.value || '').toLowerCase();
+                            if (ot.includes(targetState) || ov.includes(targetState) ||
+                                (targetState === 'united states' && (ot === 'us' || ot === 'usa' || ov === 'us' || ov === 'usa'))) {
+                                bestSelect.selectedIndex = j;
+                                bestSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                                stateActual = opt.text.trim();
+                                break;
+                            }
+                        }
+                        if (highlight) {
+                            bestSelect.style.outline = '3px solid #28a745';
+                            bestSelect.style.backgroundColor = '#d4edda';
+                        }
+                    }
+                    else {
+                        var stateInputs = inputs.filter(function(i) {
+                            var id = (i.id || '').toLowerCase();
+                            var nm = (i.name || '').toLowerCase();
+                            var ph = (i.placeholder || '').toLowerCase();
+                            return id.includes('state') || nm.includes('state') || ph.includes('state');
+                        });
+                        if (stateInputs.length > 0) {
+                            var si = stateInputs[0];
+                            try { si.scrollIntoView({behavior: 'smooth', block: 'center'}); } catch(e){}
+                            si.value = stateVal;
+                            si.dispatchEvent(new Event('input', { bubbles: true }));
+                            si.dispatchEvent(new Event('change', { bubbles: true }));
+                            stateActual = si.value;
+                            if (highlight) {
+                                si.style.outline = '3px solid #28a745';
+                                si.style.backgroundColor = '#d4edda';
+                            }
+                        }
+                    }
+
+                    return JSON.stringify({
+                        success: true,
+                        fname: { found: !!bestFname, actual: fnameActual, score: bestFnameScore },
+                        gender: { found: !!bestRadio, actual: genderActual, score: bestRadioScore },
+                        state: { found: !!bestSelect || stateActual.length > 0, actual: stateActual, score: bestSelectScore > 0 ? bestSelectScore : 50 }
+                    });
+                ";
+
+                var jsonResult = js.ExecuteScript(script, ctx.ShadowHostChain, _settings.FirstName, _settings.Gender, _settings.State, _settings.HighlightElements)?.ToString();
+                if (!string.IsNullOrEmpty(jsonResult))
+                {
+                    using var doc = JsonDocument.Parse(jsonResult);
+                    var root = doc.RootElement;
+                    if (root.TryGetProperty("success", out var succElem) && succElem.GetBoolean())
+                    {
+                        var fnameObj = root.GetProperty("fname");
+                        bool fnameFound = fnameObj.GetProperty("found").GetBoolean();
+                        string fnameVal = fnameObj.GetProperty("actual").GetString() ?? "";
+                        double fnameScore = fnameObj.GetProperty("score").GetDouble();
+
+                        var genderObj = root.GetProperty("gender");
+                        bool genderFound = genderObj.GetProperty("found").GetBoolean();
+                        string genderVal = genderObj.GetProperty("actual").GetString() ?? "";
+                        double genderScore = genderObj.GetProperty("score").GetDouble();
+
+                        var stateObj = root.GetProperty("state");
+                        bool stateFound = stateObj.GetProperty("found").GetBoolean();
+                        string stateVal = stateObj.GetProperty("actual").GetString() ?? "";
+                        double stateScore = stateObj.GetProperty("score").GetDouble();
+
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        Console.WriteLine($"  ✔ [Shadow DOM] First Name : '{fnameVal}' (Confidence: {fnameScore})");
+                        Console.WriteLine($"  ✔ [Shadow DOM] Gender     : '{genderVal}' (Confidence: {genderScore})");
+                        Console.WriteLine($"  ✔ [Shadow DOM] State      : '{stateVal}' (Confidence: {stateScore})");
+                        Console.ResetColor();
+
+                        report.Steps.Add(new StepResult
+                        {
+                            FieldName = $"First Name (Text Box) [{ctx.Name}]",
+                            ExpectedValue = _settings.FirstName,
+                            ActualValue = fnameVal,
+                            ConfidenceScore = fnameScore,
+                            WinningStrategy = "Shadow DOM Heuristic Piercing",
+                            Success = fnameFound && fnameVal.Equals(_settings.FirstName, StringComparison.OrdinalIgnoreCase),
+                            Duration = sw.Elapsed
+                        });
+
+                        report.Steps.Add(new StepResult
+                        {
+                            FieldName = $"Gender (Radio Button) [{ctx.Name}]",
+                            ExpectedValue = _settings.Gender,
+                            ActualValue = genderVal,
+                            ConfidenceScore = genderScore,
+                            WinningStrategy = "Shadow DOM Heuristic Piercing",
+                            Success = genderFound,
+                            Duration = sw.Elapsed
+                        });
+
+                        report.Steps.Add(new StepResult
+                        {
+                            FieldName = $"State (Dropdown) [{ctx.Name}]",
+                            ExpectedValue = _settings.State,
+                            ActualValue = stateVal,
+                            ConfidenceScore = stateScore,
+                            WinningStrategy = "Shadow DOM Heuristic Piercing",
+                            Success = stateFound && !string.IsNullOrEmpty(stateVal),
+                            Duration = sw.Elapsed
+                        });
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ Error automating Shadow DOM context: {ex.Message}");
+            }
+            finally
+            {
+                _driver.SwitchTo().DefaultContent();
+            }
+        }
+
+        private void ExecuteIframeInShadowContext(FormContextInfo ctx, AutomationReport report)
+        {
+            try
+            {
+                if (ctx.ParentFrameHierarchy.Count > 0)
+                {
+                    if (!SwitchToHierarchy(ctx.ParentFrameHierarchy)) return;
+                }
+                else
+                {
+                    _driver.SwitchTo().DefaultContent();
+                }
+
+                var js = (IJavaScriptExecutor)_driver;
+                var getIframeScript = @"
+                    var chain = arguments[0];
+                    var idx = arguments[1];
+                    var cur = document;
+                    for (var i = 0; i < chain.length; i++) {
+                        var host = (cur === document) ? document.querySelector(chain[i]) : cur.querySelector(chain[i]);
+                        if (!host || !host.shadowRoot) return null;
+                        cur = host.shadowRoot;
+                    }
+                    var iframes = cur.querySelectorAll('iframe');
+                    return iframes[idx];
+                ";
+
+                var iframeElem = js.ExecuteScript(getIframeScript, ctx.ShadowHostChain, ctx.ShadowIframeIndex) as IWebElement;
+                if (iframeElem == null)
+                {
+                    Console.WriteLine($"⚠ Could not locate iframe inside shadow chain: {string.Join(" > ", ctx.ShadowHostChain)}");
+                    return;
+                }
+
+                try
+                {
+                    js.ExecuteScript("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", iframeElem);
+                    Thread.Sleep(200);
+                }
+                catch { }
+
+                _driver.SwitchTo().Frame(iframeElem);
+                WaitForPageReady();
+
+                var step1 = TestFirstNameField(_settings.FirstName);
+                step1.FieldName = $"{step1.FieldName} [{ctx.Name}]";
+                report.Steps.Add(step1);
+
+                var step2 = TestGenderField(_settings.Gender);
+                step2.FieldName = $"{step2.FieldName} [{ctx.Name}]";
+                report.Steps.Add(step2);
+
+                var step3 = TestStateField(_settings.State);
+                step3.FieldName = $"{step3.FieldName} [{ctx.Name}]";
+                report.Steps.Add(step3);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ Error automating iframe in shadow: {ex.Message}");
+            }
+            finally
+            {
+                _driver.SwitchTo().DefaultContent();
+            }
         }
 
         #region Field Automations

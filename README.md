@@ -89,6 +89,56 @@ Each candidate element in the DOM is scored based on evidence points:
 
 ---
 
+## 🌐 Universal DOM & Shadow DOM Architecture
+
+Real-world modern applications (React, Angular, Vue, Web Components, Micro-frontends) do not stay confined to a single static DOM tree. They frequently employ:
+1. **Standard Document Form(s)**
+2. **Anonymous IFrames without IDs** (`src='/Home/IFrame'`)
+3. **Nested IFrames** (`NestedIFrame` -> `InnerNestedIFrame`)
+4. **Named IFrames** (`id='iframeId'`)
+5. **Open Shadow DOMs** (`<nestedshadow-form>`)
+6. **Deeply Nested Shadow DOMs (up to 5+ levels deep)** (`<nestedshadow-form6>` -> `...` -> `<nestedshadow-form>`)
+7. **IFrames hosted inside Shadow DOMs** (`<nestedshadow-iframe>` -> `<iframe>`)
+
+### The 11 Automated Contexts on CloudQA
+When running against `https://app.cloudqa.io/home/AutomationPracticeForm`, the engine automatically scans and automates **all 11 distinct form contexts**:
+
+| # | Form Context | Architecture Type | Detection & Traversal Strategy | Status |
+|---|---|---|---|:---:|
+| 1 | **Main Document** | Default DOM Content | `SmartFieldResolver` multi-factor scoring | **PASS ✅** |
+| 2 | **IFrame without ID (Index #0)** | Top-level Anonymous Frame | Recursive iframe element reference switching | **PASS ✅** |
+| 3 | **Nested IFrame (Depth #2)** | IFrame inside IFrame | Multi-tier recursive frame index path (`[0, 0]`) | **PASS ✅** |
+| 4 | **Nested IFrame (Depth #3)** | Multi-level Nested IFrame | Deep recursive frame index path (`[0, 0, 0]`) | **PASS ✅** |
+| 5 | **IFrame with ID 'iframeId'** | Named Top-level IFrame | ID and index heuristic frame switching | **PASS ✅** |
+| 6 | **Shadow DOM [nestedshadow-form]** | Web Component Shadow Root | JS-assisted boundary piercing & event dispatching | **PASS ✅** |
+| 7 | **Shadow DOM (Depth #2)** | Nested Shadow Root (`nestedshadow-form3`) | Recursive shadow host chain traversal | **PASS ✅** |
+| 8 | **Shadow DOM (Depth #3)** | Nested Shadow Root (`nestedshadow-form4`) | Recursive shadow host chain traversal | **PASS ✅** |
+| 9 | **Shadow DOM (Depth #4)** | Nested Shadow Root (`nestedshadow-form5`) | Recursive shadow host chain traversal | **PASS ✅** |
+| 10 | **Shadow DOM (Depth #5)** | Nested Shadow Root (`nestedshadow-form6`) | Deep 5-tier recursive shadow host chain traversal | **PASS ✅** |
+| 11 | **IFrame inside Shadow DOM** | IFrame encapsulated in Shadow Root | Shadow root query -> Frame element switch -> Full resolver | **PASS ✅** |
+
+```
+                               ┌────────────────────────────────────────────────────────┐
+                               │                 Root Document DOM Tree                 │
+                               └───────────┬────────────────────────────────┬───────────┘
+                                           │                                │
+                     ┌─────────────────────┴────────────┐       ┌───────────┴─────────────────────┐
+                     ▼                                  ▼       ▼                                 ▼
+             Main Document Form               Top-Level IFrames    Single Shadow DOM           Deep Shadow Chains
+                     │                        (With / Without ID)  (<nestedshadow-form>)       (Levels 2, 3, 4, 5)
+                     ▼                                  │                       │                         │
+             SmartFieldResolver                         ▼                       ▼                         ▼
+             (Scores, Fills, Asserts)          Recursive IFrame Engine  Shadow Heuristic Engine   Deep Chain Piercing
+                                                        │                       │                         │
+                                                        ▼                       └─────────────┬───────────┘
+                                               Nested IFrames (Depth 2 & 3)                   │
+                                                        │                                     ▼
+                                                        └─────────────────────────► IFrame inside Shadow DOM
+                                                                                    (<nestedshadow-iframe> -> <iframe>)
+```
+
+---
+
 ## 🧪 Mutation Test Suite (100% Pass Rate)
 
 To prove that the solution fulfills requirement #3 ("keeps working when page changes"), a built-in mutation test suite evaluates 4 challenging structural page mutations:
