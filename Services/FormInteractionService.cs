@@ -46,14 +46,29 @@ namespace ResilientFormAutomation.Services
             Console.WriteLine("===============================================================================");
             Console.ResetColor();
 
-            // Navigate to configured URL
-            _driver.Navigate().GoToUrl(_settings.TargetUrl);
+            bool navigated = false;
+            for (int retry = 1; retry <= 3; retry++)
+            {
+                try
+                {
+                    _driver.Navigate().GoToUrl(_settings.TargetUrl);
+                    navigated = true;
+                    break;
+                }
+                catch (Exception navEx) when (retry < 3)
+                {
+                    Console.WriteLine($"⚠ Navigation attempt #{retry} failed ({navEx.Message}). Retrying in 2 seconds...");
+                    Thread.Sleep(2000);
+                }
+            }
+            if (!navigated)
+            {
+                _driver.Navigate().GoToUrl(_settings.TargetUrl);
+            }
             WaitForPageReady();
 
-            // Run deep DOM & Shadow Root diagnostics
             RunDeepDomDiagnostics();
 
-            // Determine execution contexts (Main document, IFrame without ID, IFrame with ID)
             var contexts = DetermineExecutionContexts();
 
             Console.ForegroundColor = ConsoleColor.Magenta;
@@ -67,7 +82,6 @@ namespace ResilientFormAutomation.Services
 
             report.EndTime = DateTime.UtcNow;
 
-            // Save Screenshot
             if (_settings.TakeScreenshots)
             {
                 _driver.SwitchTo().DefaultContent();
@@ -178,26 +192,22 @@ namespace ResilientFormAutomation.Services
             var contexts = new List<FormContextInfo>();
             _driver.SwitchTo().DefaultContent();
 
-            // 1. Check if default content has form inputs
             bool mainHasInputs = _driver.FindElements(By.TagName("input")).Count > 0;
             if (mainHasInputs && (_settings.TargetFrame.Equals("all", StringComparison.OrdinalIgnoreCase) ||
                                   _settings.TargetFrame.Equals("main", StringComparison.OrdinalIgnoreCase)))
             {
-                contexts.Add(new FormContextInfo 
-                { 
-                    Name = "Main Document (Default Content)", 
+                contexts.Add(new FormContextInfo
+                {
+                    Name = "Main Document (Default Content)",
                     Type = ContextType.StandardDocument,
-                    FrameHierarchy = new List<int>() 
+                    FrameHierarchy = new List<int>()
                 });
             }
 
-            // 2. Discover all iframes recursively (depth 1 to 4)
             DiscoverFramesRecursive(new List<int>(), contexts, 0, 4);
 
-            // 3. Discover all Shadow DOMs and Shadow IFrames (in main document)
             DiscoverShadowContexts(new List<int>(), contexts);
 
-            // If no contexts matched, fallback to main document
             if (contexts.Count == 0)
             {
                 contexts.Add(new FormContextInfo { Name = "Default Document Context", Type = ContextType.StandardDocument, FrameHierarchy = new List<int>() });
@@ -217,7 +227,7 @@ namespace ResilientFormAutomation.Services
 
             for (int i = 0; i < frameCount; i++)
             {
-                // Re-navigate to parent to ensure fresh DOM state
+
                 if (!SwitchToHierarchy(parentPath)) break;
                 var currentFrames = _driver.FindElements(By.TagName("iframe"));
                 if (i >= currentFrames.Count) break;
@@ -229,7 +239,6 @@ namespace ResilientFormAutomation.Services
 
                 var childPath = new List<int>(parentPath) { i };
 
-                // Inspect contents of this frame
                 bool switched = false;
                 try
                 {
@@ -242,8 +251,8 @@ namespace ResilientFormAutomation.Services
                     bool hasFormElements = inputs.Count > 0 || selects.Count > 0;
 
                     string depthLabel = currentDepth == 0 ? "IFrame" : $"Nested IFrame (Depth #{currentDepth + 1})";
-                    string label = isNoId 
-                        ? $"{depthLabel} without ID (Index #{i}, src='{src}')" 
+                    string label = isNoId
+                        ? $"{depthLabel} without ID (Index #{i}, src='{src}')"
                         : $"{depthLabel} with ID '{id}' (Index #{i})";
 
                     bool shouldInclude = false;
@@ -276,15 +285,13 @@ namespace ResilientFormAutomation.Services
                         });
                     }
 
-                    // Also check for any Shadow DOMs inside this frame
                     DiscoverShadowContexts(childPath, contexts);
 
-                    // Recurse deeper inside this frame to find child/grandchild iframes!
                     DiscoverFramesRecursive(childPath, contexts, currentDepth + 1, maxDepth);
                 }
                 catch
                 {
-                    // Frame access denied (e.g. cross-origin) or detached
+
                 }
                 finally
                 {
@@ -458,7 +465,6 @@ namespace ResilientFormAutomation.Services
                 return;
             }
 
-            // Check if this iframe actually has form elements (avoids failing on tracking/ad/blank iframes)
             var formElements = _driver.FindElements(By.XPath("//input | //select | //form | //textarea"));
             if (formElements.Count == 0 && ctx.IsIframe)
             {
@@ -467,7 +473,6 @@ namespace ResilientFormAutomation.Services
                 return;
             }
 
-            // Run the 3 fields inside this context:
             var step1 = TestFirstNameField(_settings.FirstName);
             step1.FieldName = $"{step1.FieldName} [{ctx.Name}]";
             report.Steps.Add(step1);
@@ -524,12 +529,12 @@ namespace ResilientFormAutomation.Services
                         var name = (inp.name || '').toLowerCase();
                         var ph = (inp.placeholder || '').toLowerCase();
                         var aria = (inp.getAttribute('aria-label') || '').toLowerCase();
-                        
+
                         if (id === 'fname' || name === 'fname') score += 90;
                         if (id.includes('first') || name.includes('first')) score += 80;
                         if (ph.includes('first') || ph.includes('name')) score += 70;
                         if (aria.includes('first') || aria.includes('name')) score += 60;
-                        
+
                         var labels = Array.from(cur.querySelectorAll('label'));
                         labels.forEach(function(lbl) {
                             var txt = (lbl.innerText || lbl.textContent || '').toLowerCase().trim();
@@ -566,7 +571,7 @@ namespace ResilientFormAutomation.Services
                         var val = (r.value || '').toLowerCase();
                         var id = (r.id || '').toLowerCase();
                         if (val === targetGender || id === targetGender) score += 90;
-                        
+
                         var labels = Array.from(cur.querySelectorAll('label'));
                         labels.forEach(function(lbl) {
                             var txt = (lbl.innerText || lbl.textContent || '').toLowerCase().trim();
@@ -603,7 +608,7 @@ namespace ResilientFormAutomation.Services
                         if (id === 'state' || name === 'state') score += 90;
                         if (id.includes('state') || name.includes('state')) score += 70;
                         if (id.includes('country') || name.includes('country')) score += 50;
-                        
+
                         for (var o = 0; o < s.options.length; o++) {
                             var ot = s.options[o].text.toLowerCase();
                             if (ot.includes('united states') || ot === 'us' || ot === 'usa') {
@@ -806,8 +811,6 @@ namespace ResilientFormAutomation.Services
             }
         }
 
-        #region Field Automations
-
         public StepResult TestFirstNameField(string firstNameValue)
         {
             var step = new StepResult
@@ -862,7 +865,6 @@ namespace ResilientFormAutomation.Services
                     _inspector.ScrollIntoView(input);
                     Thread.Sleep(150);
 
-                    // Clear & Enter text
                     try { input.Clear(); } catch { }
                     try { input.SendKeys(Keys.Control + "a"); input.SendKeys(Keys.Backspace); } catch { }
 
@@ -876,11 +878,10 @@ namespace ResilientFormAutomation.Services
                     }
                     _inspector.DispatchInputEvents(input);
 
-                    // Verification
                     string actualValue = input.GetAttribute("value") ?? "";
                     if (string.IsNullOrEmpty(actualValue))
                     {
-                        // Fallback JS injection if SendKeys was blocked or custom input
+
                         ((IJavaScriptExecutor)_driver).ExecuteScript("arguments[0].value = arguments[1];", input, firstNameValue);
                         _inspector.DispatchInputEvents(input);
                         actualValue = input.GetAttribute("value") ?? input.Text ?? "";
@@ -999,7 +1000,6 @@ namespace ResilientFormAutomation.Services
                     _inspector.ScrollIntoView(radio);
                     Thread.Sleep(150);
 
-                    // Click Target
                     var clickTarget = match.ClickTarget ?? radio;
                     try
                     {
@@ -1112,7 +1112,6 @@ namespace ResilientFormAutomation.Services
                         var select = new SelectElement(element);
                         bool selected = false;
 
-                        // Strategy 1: Select by exact visible text
                         try
                         {
                             select.SelectByText(stateValue);
@@ -1120,7 +1119,6 @@ namespace ResilientFormAutomation.Services
                         }
                         catch { }
 
-                        // Strategy 2: Select by partial text or common country/state aliases
                         if (!selected)
                         {
                             try
@@ -1140,7 +1138,6 @@ namespace ResilientFormAutomation.Services
                             catch { }
                         }
 
-                        // Strategy 3: Select by value attribute or aliases
                         if (!selected)
                         {
                             try
@@ -1158,7 +1155,6 @@ namespace ResilientFormAutomation.Services
                             }
                         }
 
-                        // Strategy 4: JavaScript select
                         if (!selected)
                         {
                             ((IJavaScriptExecutor)_driver).ExecuteScript(@"
@@ -1182,7 +1178,6 @@ namespace ResilientFormAutomation.Services
                         if (_settings.HighlightElements) _inspector.Highlight(element, "#28a745");
                         Thread.Sleep(200);
 
-                        // Verification
                         string actualSelected = select.SelectedOption?.Text?.Trim() ?? "";
                         valuesRecorded.Add(actualSelected);
 
@@ -1205,7 +1200,7 @@ namespace ResilientFormAutomation.Services
                     }
                     else if (element.TagName.Equals("input", StringComparison.OrdinalIgnoreCase))
                     {
-                        // Input / Datalist State field
+
                         try { element.Clear(); } catch { }
                         element.SendKeys(stateValue);
                         _inspector.DispatchInputEvents(element);
@@ -1220,7 +1215,7 @@ namespace ResilientFormAutomation.Services
                     }
                     else
                     {
-                        // Custom dropdown (e.g. Bootstrap dropdown button)
+
                         element.Click();
                         Thread.Sleep(300);
 
@@ -1262,33 +1257,28 @@ namespace ResilientFormAutomation.Services
             return step;
         }
 
-        #endregion
-
-        #region Context Traversal (Frames & Shadow DOM)
-
         private CandidateMatch? ResolveFieldWithContextFallback(Func<CandidateMatch?> resolveFunc)
         {
-            // 1. First attempt in default/current context
+
             var match = resolveFunc();
             if (match != null && match.ConfidenceScore >= 30)
             {
                 return match;
             }
 
-            // 2. Iframes fallback traversal (handles iframes WITH or WITHOUT ID)
             _driver.SwitchTo().DefaultContent();
             var iframes = _driver.FindElements(By.TagName("iframe")).ToList();
             for (int i = 0; i < iframes.Count; i++)
             {
                 try
                 {
-                    // Switch to iframe by element reference (works regardless of whether iframe has an id, name, or neither!)
+
                     _driver.SwitchTo().Frame(iframes[i]);
                     var frameMatch = resolveFunc();
                     if (frameMatch != null && frameMatch.ConfidenceScore >= 30)
                     {
                         frameMatch.AddScore(25, $"Found inside embedded <iframe> index #{i}");
-                        // Keep driver focused inside this frame context so interaction succeeds!
+
                         return frameMatch;
                     }
                     _driver.SwitchTo().DefaultContent();
@@ -1302,10 +1292,6 @@ namespace ResilientFormAutomation.Services
             return match;
         }
 
-        #endregion
-
-        #region Helpers & Reporting
-
         private void WaitForPageReady()
         {
             try
@@ -1315,7 +1301,7 @@ namespace ResilientFormAutomation.Services
             }
             catch
             {
-                // Proceed anyway if document.readyState doesn't complete within timeout
+
             }
         }
 
@@ -1379,6 +1365,5 @@ namespace ResilientFormAutomation.Services
             Console.WriteLine();
         }
 
-        #endregion
     }
 }

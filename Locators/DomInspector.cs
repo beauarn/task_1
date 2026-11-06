@@ -28,7 +28,7 @@ namespace ResilientFormAutomation.Locators
             }
             catch
             {
-                // Ignore highlight failures in headless or strict cross-origin frames
+
             }
         }
 
@@ -40,7 +40,7 @@ namespace ResilientFormAutomation.Locators
             }
             catch
             {
-                // Fallback to selenium native interaction
+
             }
         }
 
@@ -60,7 +60,7 @@ namespace ResilientFormAutomation.Locators
             }
             catch
             {
-                // Best effort event dispatching
+
             }
         }
 
@@ -102,7 +102,6 @@ namespace ResilientFormAutomation.Locators
                 var r1 = GetBoundingRect(fromElem);
                 var r2 = GetBoundingRect(toElem);
 
-                // Center of fromElem to center of toElem
                 double c1x = r1.X + r1.Width / 2.0;
                 double c1y = r1.Y + r1.Height / 2.0;
 

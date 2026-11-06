@@ -85,11 +85,10 @@ namespace ResilientFormAutomation.Services
             return "chrome";
         }
 
-        #region Chrome
-
         public static IWebDriver CreateChromeDriver(AutomationSettings settings)
         {
             var options = new ChromeOptions();
+            options.PageLoadStrategy = PageLoadStrategy.Eager;
 
             if (settings.Headless)
             {
@@ -107,7 +106,9 @@ namespace ResilientFormAutomation.Services
                 options.BinaryLocation = settings.BrowserBinaryPath;
             }
 
-            return new ChromeDriver(options);
+            var driver = new ChromeDriver(options);
+            driver.Manage().Timeouts().PageLoad = TimeSpan.FromSeconds(30);
+            return driver;
         }
 
         private static bool IsChromeInstalled()
@@ -125,13 +126,10 @@ namespace ResilientFormAutomation.Services
             return candidates.Any(File.Exists);
         }
 
-        #endregion
-
-        #region Brave
-
         public static IWebDriver CreateBraveDriver(AutomationSettings settings)
         {
             var options = new ChromeOptions();
+            options.PageLoadStrategy = PageLoadStrategy.Eager;
 
             string bravePath = settings.BrowserBinaryPath;
             if (string.IsNullOrEmpty(bravePath) || !File.Exists(bravePath))
@@ -159,7 +157,9 @@ namespace ResilientFormAutomation.Services
             options.AddArgument("--window-size=1366,768");
             options.AddArgument("--log-level=3");
 
-            return new ChromeDriver(options);
+            var driver = new ChromeDriver(options);
+            driver.Manage().Timeouts().PageLoad = TimeSpan.FromSeconds(30);
+            return driver;
         }
 
         private static string? FindBraveBinaryPath()
@@ -182,13 +182,10 @@ namespace ResilientFormAutomation.Services
             return FindBraveBinaryPath() != null;
         }
 
-        #endregion
-
-        #region Edge
-
         public static IWebDriver CreateEdgeDriver(AutomationSettings settings)
         {
             var options = new EdgeOptions();
+            options.PageLoadStrategy = PageLoadStrategy.Eager;
 
             if (settings.Headless)
             {
@@ -206,7 +203,9 @@ namespace ResilientFormAutomation.Services
                 options.BinaryLocation = settings.BrowserBinaryPath;
             }
 
-            return new EdgeDriver(options);
+            var driver = new EdgeDriver(options);
+            driver.Manage().Timeouts().PageLoad = TimeSpan.FromSeconds(30);
+            return driver;
         }
 
         private static bool IsEdgeInstalled()
@@ -222,13 +221,10 @@ namespace ResilientFormAutomation.Services
             return candidates.Any(File.Exists);
         }
 
-        #endregion
-
-        #region Firefox
-
         public static IWebDriver CreateFirefoxDriver(AutomationSettings settings)
         {
             var options = new FirefoxOptions();
+            options.PageLoadStrategy = PageLoadStrategy.Eager;
 
             if (settings.Headless)
             {
@@ -243,7 +239,9 @@ namespace ResilientFormAutomation.Services
                 options.BinaryLocation = settings.BrowserBinaryPath;
             }
 
-            return new FirefoxDriver(options);
+            var driver = new FirefoxDriver(options);
+            driver.Manage().Timeouts().PageLoad = TimeSpan.FromSeconds(30);
+            return driver;
         }
 
         private static bool IsFirefoxInstalled()
@@ -260,6 +258,5 @@ namespace ResilientFormAutomation.Services
             return candidates.Any(File.Exists);
         }
 
-        #endregion
     }
 }

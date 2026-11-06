@@ -31,7 +31,7 @@ namespace ResilientFormAutomation.Services
             string scenariosDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Scenarios");
             if (!Directory.Exists(scenariosDir))
             {
-                // Fallback to project directory
+
                 scenariosDir = Path.Combine(Directory.GetCurrentDirectory(), "Scenarios");
             }
 
@@ -83,7 +83,6 @@ namespace ResilientFormAutomation.Services
                 scenarioResults.Add((name, report));
             }
 
-            // Print Final Matrix
             Console.WriteLine();
             Console.ForegroundColor = ConsoleColor.Magenta;
             Console.WriteLine("===============================================================================");

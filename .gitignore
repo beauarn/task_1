@@ -4,5 +4,6 @@ obj/
 *.suo
 .vs/
 Screenshots/*.png
+Screenshots/**/*.png
 !Screenshots/.gitkeep
 page_sample.html

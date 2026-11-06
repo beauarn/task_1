@@ -12,7 +12,6 @@ namespace ResilientFormAutomation.Locators
         private readonly IWebDriver _driver;
         private readonly DomInspector _inspector;
 
-        // Semantic synonym dictionaries
         private static readonly string[] FirstNamePositiveKeywords = {
             "first name", "firstname", "first_name", "first-name",
             "fname", "f_name", "first_nm", "first", "given name", "givenname", "given-name",
@@ -52,8 +51,6 @@ namespace ResilientFormAutomation.Locators
             _inspector = inspector;
         }
 
-        #region First Name Resolution
-
         public List<CandidateMatch> ResolveAllFirstNames()
         {
             var candidates = EvaluateAllFirstNameCandidates();
@@ -78,8 +75,6 @@ namespace ResilientFormAutomation.Locators
                 return bestMatch;
             }
 
-            // Fallback Cascade: If all semantic scores are low/zero (extreme anonymization/no labels)
-            // Select the first visible editable text box that does not conflict with competing tokens
             var inputs = FindAllPotentialTextInputs();
             var fallbackInput = inputs.FirstOrDefault(i =>
             {
@@ -104,11 +99,9 @@ namespace ResilientFormAutomation.Locators
         {
             var candidates = new List<CandidateMatch>();
 
-            // 1. Gather all potential text-like input elements
             var inputs = FindAllPotentialTextInputs();
             if (inputs.Count == 0) return candidates;
 
-            // 2. Gather all label elements on the page (pre-cache metadata for optimal performance)
             var rawLabels = _driver.FindElements(By.XPath(
                 "//label | //*[contains(@class,'label') or contains(@class,'title') or contains(@class,'legend') or contains(@class,'field-name') or @role='label'] | //dt | //b | //strong"
             )).ToList();
@@ -156,7 +149,14 @@ namespace ResilientFormAutomation.Locators
                     candidate.AddScore(15, "Element is visible and interactable");
                 }
 
-                // Check Negative Keywords first (disambiguate against Last Name, Username, etc.)
+                bool isEnabled = input.Enabled;
+                string isReadonly = input.GetAttribute("readonly") ?? "";
+                string ariaDisabled = input.GetAttribute("aria-disabled") ?? "";
+                if (!isEnabled || !string.IsNullOrEmpty(isReadonly) || ariaDisabled.Equals("true", StringComparison.OrdinalIgnoreCase))
+                {
+                    candidate.Penalize(100, "Element is disabled, readonly, or aria-disabled");
+                }
+
                 bool hasNegativeKeyword = false;
                 foreach (var neg in FirstNameNegativeKeywords)
                 {
@@ -168,7 +168,6 @@ namespace ResilientFormAutomation.Locators
                     }
                 }
 
-                // Direct attribute positive matches
                 foreach (var pos in FirstNamePositiveKeywords)
                 {
                     if (id == pos || id.Contains(pos))
@@ -212,7 +211,6 @@ namespace ResilientFormAutomation.Locators
                     candidate.AddScore(45, "HTML5 standard autocomplete='given-name'");
                 }
 
-                // Generic 'Name' placeholder when not conflicting with last name
                 if (!hasNegativeKeyword)
                 {
                     if (placeholder.Equals("name", StringComparison.OrdinalIgnoreCase) || placeholder.Contains("enter name"))
@@ -229,10 +227,9 @@ namespace ResilientFormAutomation.Locators
                     }
                 }
 
-                // Label-to-Input Association Heuristics
                 foreach (var label in labelData)
                 {
-                    // Check if this label represents 'First Name'
+
                     bool isFirstNameLabel = FirstNamePositiveKeywords.Any(k => label.LowerText.Contains(k) || label.Name.Contains(k));
                     bool isCompetingNameLabel = CompetingNameKeywords.Any(k => label.LowerText.Contains(k) || label.Name.Contains(k));
                     bool isGenericNameLabel = !isCompetingNameLabel &&
@@ -240,19 +237,17 @@ namespace ResilientFormAutomation.Locators
 
                     if (isFirstNameLabel)
                     {
-                        // Explicit 'for' -> 'id' matching
+
                         if (!string.IsNullOrEmpty(label.For) && !string.IsNullOrEmpty(id) && label.For.Equals(id, StringComparison.OrdinalIgnoreCase))
                         {
                             candidate.AddScore(60, $"Explicit <label for='{label.For}'> matches element id='{id}'");
                         }
 
-                        // Explicit 'name' matching
                         if (!string.IsNullOrEmpty(label.Name) && (label.Name.Equals(id, StringComparison.OrdinalIgnoreCase) || label.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
                         {
                             candidate.AddScore(50, $"Label name='{label.Name}' matches element identifier");
                         }
 
-                        // Enclosing label check: <label>First Name <input ...></label>
                         try
                         {
                             var enclosingInputs = label.Element.FindElements(By.XPath(".//input"));
@@ -263,7 +258,6 @@ namespace ResilientFormAutomation.Locators
                         }
                         catch { }
 
-                        // Proximity / Visual Distance Check
                         if (isVisible)
                         {
                             double distance = _inspector.CalculateDistance(label.Element, input);
@@ -278,7 +272,6 @@ namespace ResilientFormAutomation.Locators
                             }
                         }
 
-                        // Shared parent container (form-group, row, div, table-row)
                         if (AreInSameContainer(label.Element, input))
                         {
                             candidate.AddScore(45, $"Shares immediate field container with label '{label.Text}'");
@@ -286,7 +279,7 @@ namespace ResilientFormAutomation.Locators
                     }
                     else if (isGenericNameLabel)
                     {
-                        // Fallback when label is simply "Name" or "Your Name" (without "first")
+
                         if (!string.IsNullOrEmpty(label.For) && !string.IsNullOrEmpty(id) && label.For.Equals(id, StringComparison.OrdinalIgnoreCase))
                         {
                             candidate.AddScore(45, $"Explicit <label for='{label.For}'> (generic name) matches element id='{id}'");
@@ -323,17 +316,12 @@ namespace ResilientFormAutomation.Locators
             return candidates;
         }
 
-        #endregion
-
-        #region Gender Resolution
-
         public List<CandidateMatch> ResolveAllGenders(string targetOption = "Male")
         {
             var candidates = EvaluateAllGenderCandidates(targetOption);
             var eligible = candidates.Where(c => c.ConfidenceScore >= 30).OrderByDescending(c => c.ConfidenceScore).ToList();
             if (eligible.Count <= 1) return eligible;
 
-            // Group by distinct radio groups (e.g. name or immediate container)
             var result = new List<CandidateMatch>();
             var seenGroups = new HashSet<string>();
 
@@ -371,11 +359,9 @@ namespace ResilientFormAutomation.Locators
             string normalizedTarget = targetOption.Trim();
             var targetWordRegex = new Regex($@"\b{Regex.Escape(normalizedTarget)}\b", RegexOptions.IgnoreCase);
 
-            // 1. Gather all radio buttons
             var radios = _driver.FindElements(By.XPath("//input[@type='radio']")).ToList();
             if (radios.Count == 0) return candidates;
 
-            // 2. Locate gender contextual containers or labels
             var genderLabels = _driver.FindElements(By.XPath("//label | //legend | //span | //h3 | //h4 | //div[contains(@class,'label')]"))
                 .Where(e => GenderKeywords.Any(k => (e.Text ?? "").ToLowerInvariant().Contains(k)))
                 .ToList();
@@ -385,12 +371,18 @@ namespace ResilientFormAutomation.Locators
                 var candidate = new CandidateMatch(radio, 0, "Resilient Radio Selection");
                 candidate.ElementSummary = _inspector.GetElementSummary(radio);
 
+                bool isEnabled = radio.Enabled;
+                string ariaDisabled = radio.GetAttribute("aria-disabled") ?? "";
+                if (!isEnabled || ariaDisabled.Equals("true", StringComparison.OrdinalIgnoreCase))
+                {
+                    candidate.Penalize(100, "Radio button is disabled or aria-disabled");
+                }
+
                 string id = (radio.GetAttribute("id") ?? "").ToLowerInvariant();
                 string name = (radio.GetAttribute("name") ?? "").ToLowerInvariant();
                 string val = (radio.GetAttribute("value") ?? "").Trim();
                 string valLower = val.ToLowerInvariant();
 
-                // Context match: Does this radio belong to a Gender group?
                 bool belongsToGenderGroup = false;
                 foreach (var gkw in GenderKeywords)
                 {
@@ -412,16 +404,14 @@ namespace ResilientFormAutomation.Locators
                     }
                 }
 
-                // If not in gender group and has another group name (e.g. 'hobbies', 'newsletter'), penalize
                 if (!belongsToGenderGroup && !string.IsNullOrEmpty(name))
                 {
                     candidate.Penalize(50, $"Belongs to non-gender group name='{name}'");
                 }
 
-                // Value matching
-                bool isMaleValMatch = normalizedTarget.Equals("Male", StringComparison.OrdinalIgnoreCase) && 
+                bool isMaleValMatch = normalizedTarget.Equals("Male", StringComparison.OrdinalIgnoreCase) &&
                                       (valLower == "m" || valLower == "male" || valLower == "1" || valLower == "man");
-                bool isFemaleValMatch = normalizedTarget.Equals("Female", StringComparison.OrdinalIgnoreCase) && 
+                bool isFemaleValMatch = normalizedTarget.Equals("Female", StringComparison.OrdinalIgnoreCase) &&
                                         (valLower == "f" || valLower == "female" || valLower == "2" || valLower == "woman");
 
                 if (targetWordRegex.IsMatch(val) || isMaleValMatch || isFemaleValMatch)
@@ -430,12 +420,11 @@ namespace ResilientFormAutomation.Locators
                 }
                 else if (!string.IsNullOrEmpty(val) && !valLower.Equals(normalizedTarget.ToLowerInvariant()))
                 {
-                    // Penalize different options (e.g. Female when target is Male)
+
                     candidate.Penalize(100, $"Radio value='{val}' belongs to alternative option");
                 }
 
-                // ID matching
-                bool idIsMaleMatch = normalizedTarget.Equals("Male", StringComparison.OrdinalIgnoreCase) && 
+                bool idIsMaleMatch = normalizedTarget.Equals("Male", StringComparison.OrdinalIgnoreCase) &&
                                      (id == "m" || id == "male" || (id.Contains("male") && !id.Contains("female")));
                 if (targetWordRegex.IsMatch(id) || idIsMaleMatch)
                 {
@@ -446,7 +435,6 @@ namespace ResilientFormAutomation.Locators
                     candidate.Penalize(120, "Radio id contains 'female' when target is 'Male'");
                 }
 
-                // Find adjacent / associated label or span
                 var associatedTextElements = FindAdjacentLabelsOrSpans(radio);
                 foreach (var (elem, text) in associatedTextElements)
                 {
@@ -454,7 +442,7 @@ namespace ResilientFormAutomation.Locators
                     if (targetWordRegex.IsMatch(trimmedText))
                     {
                         candidate.AddScore(45, $"Adjacent element text '{trimmedText}' strictly matches target option");
-                        candidate.ClickTarget = elem; // Prefer clicking the label/span if standard radio is styled/hidden
+                        candidate.ClickTarget = elem;
                     }
                     else if (!string.IsNullOrEmpty(trimmedText) && !trimmedText.Equals(normalizedTarget, StringComparison.OrdinalIgnoreCase))
                     {
@@ -470,10 +458,6 @@ namespace ResilientFormAutomation.Locators
 
             return candidates;
         }
-
-        #endregion
-
-        #region State Dropdown Resolution
 
         public List<CandidateMatch> ResolveAllStates(string targetState = "United States")
         {
@@ -494,7 +478,6 @@ namespace ResilientFormAutomation.Locators
                 return bestSelect;
             }
 
-            // Input / Datalist state field fallback
             try
             {
                 var stateInputs = _driver.FindElements(By.XPath("//input[contains(@id,'state') or contains(@name,'state') or contains(@placeholder,'state') or @list]"));
@@ -509,7 +492,6 @@ namespace ResilientFormAutomation.Locators
             }
             catch { }
 
-            // Custom Dropdown fallback (e.g. Bootstrap/Select2/custom divs)
             var customDropdown = ResolveCustomDropdown(targetState);
             return customDropdown;
         }
@@ -518,10 +500,8 @@ namespace ResilientFormAutomation.Locators
         {
             var candidates = new List<CandidateMatch>();
 
-            // 1. Gather all <select> elements
             var selects = _driver.FindElements(By.TagName("select")).ToList();
 
-            // 2. Gather labels mentioning 'State', 'Province', etc.
             var stateLabels = _driver.FindElements(By.XPath("//label | //span[contains(@class,'label')]"))
                 .Where(l => StateKeywords.Any(k => (l.Text ?? "").ToLowerInvariant().Contains(k) || (l.GetAttribute("name") ?? "").ToLowerInvariant().Contains(k)))
                 .ToList();
@@ -541,7 +521,13 @@ namespace ResilientFormAutomation.Locators
                     candidate.AddScore(20, "Select element is visible");
                 }
 
-                // Direct attributes matching
+                bool isEnabled = select.Enabled;
+                string ariaDisabled = select.GetAttribute("aria-disabled") ?? "";
+                if (!isEnabled || ariaDisabled.Equals("true", StringComparison.OrdinalIgnoreCase))
+                {
+                    candidate.Penalize(100, "Select dropdown is disabled or aria-disabled");
+                }
+
                 foreach (var skw in StateKeywords)
                 {
                     if (id.Contains(skw))
@@ -558,13 +544,11 @@ namespace ResilientFormAutomation.Locators
                     }
                 }
 
-                // Disambiguate against other dropdowns (e.g. Country dropdown, City dropdown)
                 if (name.Contains("country") || id.Contains("country"))
                 {
                     candidate.Penalize(60, "Element has identifier containing 'country' rather than 'state'");
                 }
 
-                // Label association
                 foreach (var label in stateLabels)
                 {
                     string labelFor = (label.GetAttribute("for") ?? "").ToLowerInvariant();
@@ -586,7 +570,6 @@ namespace ResilientFormAutomation.Locators
                     }
                 }
 
-                // Content inspection: Does this select contain target option?
                 try
                 {
                     var options = select.FindElements(By.TagName("option"));
@@ -646,15 +629,10 @@ namespace ResilientFormAutomation.Locators
             return null;
         }
 
-        #endregion
-
-        #region Helper Routines
-
         private List<IWebElement> FindAllPotentialTextInputs()
         {
             var textInputs = new List<IWebElement>();
 
-            // 1. Gather all non-excluded input elements
             var rawInputs = _driver.FindElements(By.TagName("input"));
             foreach (var input in rawInputs)
             {
@@ -668,11 +646,10 @@ namespace ResilientFormAutomation.Locators
                 }
                 catch
                 {
-                    // Stale or detached element
+
                 }
             }
 
-            // 2. Gather textareas as fallback text inputs
             try
             {
                 var rawTextareas = _driver.FindElements(By.TagName("textarea"));
@@ -690,9 +667,7 @@ namespace ResilientFormAutomation.Locators
         {
             try
             {
-                // In HTML forms, an element and its label typically share a field-level container:
-                // e.g. .form-group, .field, .input-group, <td>, <p>, or direct parent element.
-                // We deliberately exclude generic layout wrappers like 'row', 'form', 'body' so sibling fields aren't conflated.
+
                 var result = ((IJavaScriptExecutor)_driver).ExecuteScript(@"
                     var e1 = arguments[0];
                     var e2 = arguments[1];
@@ -719,7 +694,6 @@ namespace ResilientFormAutomation.Locators
             {
                 string id = radio.GetAttribute("id") ?? "";
 
-                // 1. Explicit label with for="id"
                 if (!string.IsNullOrEmpty(id))
                 {
                     var forLabels = _driver.FindElements(By.XPath($"//label[@for='{id}'] | //span[@for='{id}']"));
@@ -729,21 +703,18 @@ namespace ResilientFormAutomation.Locators
                     }
                 }
 
-                // 2. Preceding siblings (e.g. <span>Male</span> <input ...>)
                 var precedingSiblings = radio.FindElements(By.XPath("preceding-sibling::*[self::span or self::label or self::b][position() <= 2]"));
                 foreach (var sib in precedingSiblings)
                 {
                     results.Add((sib, sib.Text));
                 }
 
-                // 3. Following siblings (e.g. <input ...><span ...>Male</span>)
                 var followingSiblings = radio.FindElements(By.XPath("following-sibling::*[self::span or self::label or self::b][position() <= 2]"));
                 foreach (var sib in followingSiblings)
                 {
                     results.Add((sib, sib.Text));
                 }
 
-                // 4. Preceding table cell (e.g. <td>Male</td><td><input type="radio"></td>)
                 try
                 {
                     var tdSiblings = radio.FindElements(By.XPath("ancestor::td[1]/preceding-sibling::td[1]"));
@@ -754,7 +725,6 @@ namespace ResilientFormAutomation.Locators
                 }
                 catch { }
 
-                // 5. Parent text (e.g. <label><input ...> Male</label>)
                 var parent = radio.FindElement(By.XPath(".."));
                 string parentText = parent.Text;
                 if (!string.IsNullOrEmpty(parentText))
@@ -767,6 +737,5 @@ namespace ResilientFormAutomation.Locators
             return results;
         }
 
-        #endregion
     }
 }

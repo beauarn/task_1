@@ -15,7 +15,6 @@ namespace ResilientFormAutomation
 
             PrintBanner();
 
-            // 1. Build Configuration
             var builder = new ConfigurationBuilder()
                 .SetBasePath(Directory.GetCurrentDirectory())
                 .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false);
@@ -24,14 +23,11 @@ namespace ResilientFormAutomation
             var settings = new AutomationSettings();
             configRoot.GetSection("AutomationSettings").Bind(settings);
 
-            // Read environment variables manually if set
             var envTargetUrl = Environment.GetEnvironmentVariable("APP_URL") ?? Environment.GetEnvironmentVariable("AUTOMATION_URL");
             if (!string.IsNullOrEmpty(envTargetUrl)) settings.TargetUrl = envTargetUrl;
 
-            // 2. Parse Command-Line Arguments (highest priority)
             ParseCommandLineArgs(args, settings);
 
-            // Print Effective Settings
             Console.ForegroundColor = ConsoleColor.DarkCyan;
             Console.WriteLine("CONFIGURATION LOADED:");
             Console.WriteLine($"  • Target URL   : {settings.TargetUrl}");
@@ -53,7 +49,6 @@ namespace ResilientFormAutomation
                 return 0;
             }
 
-            // 3. Initialize Browser Driver via Factory (Chrome, Brave, Firefox, Edge)
             try
             {
                 using var driver = WebDriverFactory.CreateDriver(settings);
@@ -208,7 +203,7 @@ namespace ResilientFormAutomation
                                                   arg.EndsWith(".html", StringComparison.OrdinalIgnoreCase) ||
                                                   arg.Contains(".")))
                 {
-                    // Positional URL argument (supports domain names without http/https)
+
                     settings.TargetUrl = arg.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
                                          arg.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
                                          arg.StartsWith("file://", StringComparison.OrdinalIgnoreCase)
@@ -216,7 +211,6 @@ namespace ResilientFormAutomation
                 }
             }
 
-            // Check environment variable fallback
             string? envUrl = Environment.GetEnvironmentVariable("APP_URL") ?? Environment.GetEnvironmentVariable("AUTOMATION_URL");
             if (!string.IsNullOrEmpty(envUrl) && (args.Length == 0 || !args.Any(a => a.Contains("url"))))
             {
