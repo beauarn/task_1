@@ -38,36 +38,168 @@ namespace ResilientFormAutomation.Services
             Console.ForegroundColor = ConsoleColor.Cyan;
             Console.WriteLine("===============================================================================");
             Console.WriteLine($"🚀 STARTING RESILIENT AUTOMATION TEST");
-            Console.WriteLine($"   Target URL : {_settings.TargetUrl}");
-            Console.WriteLine($"   Values     : FirstName='{_settings.FirstName}', Gender='{_settings.Gender}', State='{_settings.State}'");
+            Console.WriteLine($"   Target URL   : {_settings.TargetUrl}");
+            Console.WriteLine($"   Target Frame : {_settings.TargetFrame}");
+            Console.WriteLine($"   Values       : FirstName='{_settings.FirstName}', Gender='{_settings.Gender}', State='{_settings.State}'");
             Console.WriteLine("===============================================================================");
             Console.ResetColor();
 
             // Navigate to configured URL
             _driver.Navigate().GoToUrl(_settings.TargetUrl);
-
-            // Wait for document to be ready
             WaitForPageReady();
 
-            // 1. First Name Field
-            report.Steps.Add(TestFirstNameField(_settings.FirstName));
+            // Determine execution contexts (Main document, IFrame without ID, IFrame with ID)
+            var contexts = DetermineExecutionContexts();
 
-            // 2. Gender Field
-            report.Steps.Add(TestGenderField(_settings.Gender));
+            Console.ForegroundColor = ConsoleColor.Magenta;
+            Console.WriteLine($"📌 Identified {contexts.Count} Form Context(s) to automate on this page.");
+            Console.ResetColor();
 
-            // 3. State Field
-            report.Steps.Add(TestStateField(_settings.State));
+            foreach (var ctx in contexts)
+            {
+                ExecuteContext(ctx, report);
+            }
 
             report.EndTime = DateTime.UtcNow;
 
             // Save Screenshot
             if (_settings.TakeScreenshots)
             {
+                _driver.SwitchTo().DefaultContent();
                 report.ScreenshotPath = CaptureScreenshot("ExecutionResult");
             }
 
             PrintReportSummary(report);
             return report;
+        }
+
+        private class FormContextInfo
+        {
+            public string Name { get; set; } = string.Empty;
+            public bool IsIframe { get; set; }
+            public int IframeIndex { get; set; } = -1;
+            public string IframeId { get; set; } = string.Empty;
+            public string IframeSrc { get; set; } = string.Empty;
+        }
+
+        private List<FormContextInfo> DetermineExecutionContexts()
+        {
+            var contexts = new List<FormContextInfo>();
+            _driver.SwitchTo().DefaultContent();
+
+            // 1. Check if default content has form inputs
+            bool mainHasInputs = _driver.FindElements(By.TagName("input")).Count > 0;
+            if (mainHasInputs && (_settings.TargetFrame.Equals("all", StringComparison.OrdinalIgnoreCase) ||
+                                  _settings.TargetFrame.Equals("main", StringComparison.OrdinalIgnoreCase)))
+            {
+                contexts.Add(new FormContextInfo { Name = "Main Document (Default Content)", IsIframe = false });
+            }
+
+            // 2. Scan for IFrames
+            var rawFrames = _driver.FindElements(By.TagName("iframe")).ToList();
+            for (int i = 0; i < rawFrames.Count; i++)
+            {
+                var f = rawFrames[i];
+                string id = (f.GetAttribute("id") ?? "").Trim();
+                string src = (f.GetAttribute("src") ?? "").Trim();
+                bool isNoId = string.IsNullOrEmpty(id);
+
+                bool shouldInclude = false;
+
+                if (_settings.TargetFrame.Equals("all", StringComparison.OrdinalIgnoreCase))
+                {
+                    shouldInclude = true;
+                }
+                else if (_settings.TargetFrame.Equals("no-id", StringComparison.OrdinalIgnoreCase) && isNoId)
+                {
+                    shouldInclude = true;
+                }
+                else if (_settings.TargetFrame.Equals("iframeId", StringComparison.OrdinalIgnoreCase) && id.Equals("iframeId", StringComparison.OrdinalIgnoreCase))
+                {
+                    shouldInclude = true;
+                }
+                else if (!string.IsNullOrEmpty(id) && _settings.TargetFrame.Equals(id, StringComparison.OrdinalIgnoreCase))
+                {
+                    shouldInclude = true;
+                }
+
+                if (shouldInclude)
+                {
+                    string label = isNoId 
+                        ? $"IFrame without ID (Index #{i}, src='{src}')" 
+                        : $"IFrame with ID '{id}' (Index #{i})";
+
+                    contexts.Add(new FormContextInfo
+                    {
+                        Name = label,
+                        IsIframe = true,
+                        IframeIndex = i,
+                        IframeId = id,
+                        IframeSrc = src
+                    });
+                }
+            }
+
+            // If no contexts matched, fallback to main document
+            if (contexts.Count == 0)
+            {
+                contexts.Add(new FormContextInfo { Name = "Default Document Context", IsIframe = false });
+            }
+
+            return contexts;
+        }
+
+        private void ExecuteContext(FormContextInfo ctx, AutomationReport report)
+        {
+            Console.WriteLine();
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine("-------------------------------------------------------------------------------");
+            Console.WriteLine($"🎯 AUTOMATING CONTEXT: {ctx.Name}");
+            Console.WriteLine("-------------------------------------------------------------------------------");
+            Console.ResetColor();
+
+            _driver.SwitchTo().DefaultContent();
+
+            if (ctx.IsIframe)
+            {
+                // Re-find the iframe element by index
+                var iframes = _driver.FindElements(By.TagName("iframe"));
+                if (ctx.IframeIndex >= 0 && ctx.IframeIndex < iframes.Count)
+                {
+                    var iframeElem = iframes[ctx.IframeIndex];
+                    try
+                    {
+                        // Scroll iframe into view in parent window
+                        ((IJavaScriptExecutor)_driver).ExecuteScript(
+                            "arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", iframeElem);
+                        Thread.Sleep(300);
+                    }
+                    catch { }
+
+                    _driver.SwitchTo().Frame(iframeElem);
+                    WaitForPageReady();
+                }
+                else
+                {
+                    Console.WriteLine($"⚠ Could not switch to {ctx.Name}");
+                    return;
+                }
+            }
+
+            // Run the 3 fields inside this context:
+            var step1 = TestFirstNameField(_settings.FirstName);
+            step1.FieldName = $"{step1.FieldName} [{ctx.Name}]";
+            report.Steps.Add(step1);
+
+            var step2 = TestGenderField(_settings.Gender);
+            step2.FieldName = $"{step2.FieldName} [{ctx.Name}]";
+            report.Steps.Add(step2);
+
+            var step3 = TestStateField(_settings.State);
+            step3.FieldName = $"{step3.FieldName} [{ctx.Name}]";
+            report.Steps.Add(step3);
+
+            _driver.SwitchTo().DefaultContent();
         }
 
         #region Field Automations

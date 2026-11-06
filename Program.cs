@@ -38,6 +38,7 @@ namespace ResilientFormAutomation
             Console.WriteLine($"  • First Name   : {settings.FirstName}");
             Console.WriteLine($"  • Gender       : {settings.Gender}");
             Console.WriteLine($"  • State        : {settings.State}");
+            Console.WriteLine($"  • Target Frame : {settings.TargetFrame} (all | main | no-id | <id>)");
             Console.WriteLine($"  • Headless     : {settings.Headless}");
             Console.WriteLine($"  • Screenshots  : {settings.TakeScreenshots} ({settings.ScreenshotDirectory})");
             Console.WriteLine($"  • Run Mutants  : {settings.RunMutationTests}");
@@ -124,6 +125,14 @@ namespace ResilientFormAutomation
                 else if (arg.Equals("--state", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
                 {
                     settings.State = args[++i];
+                }
+                else if (arg.StartsWith("--frame=", StringComparison.OrdinalIgnoreCase))
+                {
+                    settings.TargetFrame = arg.Substring(8);
+                }
+                else if (arg.Equals("--frame", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+                {
+                    settings.TargetFrame = args[++i];
                 }
                 else if (arg.Equals("--headless", StringComparison.OrdinalIgnoreCase))
                 {
