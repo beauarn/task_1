@@ -122,7 +122,26 @@ Or in headless mode:
 dotnet run -- --headless
 ```
 
-### 2. Run Against a Custom or Modified Page URL
+### 2. Multi-Browser Support (Chrome, Brave, Edge, Firefox, Auto)
+The framework includes a centralized `WebDriverFactory` with auto-discovery and graceful fallback:
+```bash
+# Run with Brave Browser
+dotnet run -- --browser=brave
+
+# Run with Microsoft Edge
+dotnet run -- --browser=edge
+
+# Run with Mozilla Firefox
+dotnet run -- --browser=firefox
+
+# Auto-detect whichever browser is installed on the host
+dotnet run -- --browser=auto
+
+# Specify a custom binary path if installed in a non-standard directory
+dotnet run -- --browser=brave --browser-binary="C:\Path\To\brave.exe"
+```
+
+### 3. Run Against a Custom or Modified Page URL
 The page URL is fully configurable via command line:
 ```bash
 dotnet run -- "https://your-custom-or-modified-page.com/form"
