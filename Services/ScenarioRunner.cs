@@ -72,20 +72,12 @@ namespace ResilientFormAutomation.Services
                     TimeoutSeconds = _baseSettings.TimeoutSeconds,
                     HighlightElements = _baseSettings.HighlightElements,
                     TakeScreenshots = _baseSettings.TakeScreenshots,
-                    ScreenshotDirectory = Path.Combine(_baseSettings.ScreenshotDirectory, "Scenarios")
+                    ScreenshotDirectory = Path.Combine(_baseSettings.ScreenshotDirectory, "Scenarios"),
+                    Browser = _baseSettings.Browser,
+                    BrowserBinaryPath = _baseSettings.BrowserBinaryPath
                 };
 
-                var options = new ChromeOptions();
-                if (scenarioSettings.Headless)
-                {
-                    options.AddArgument("--headless=new");
-                }
-                options.AddArgument("--disable-gpu");
-                options.AddArgument("--no-sandbox");
-                options.AddArgument("--disable-dev-shm-usage");
-                options.AddArgument("--window-size=1280,800");
-
-                using var driver = new ChromeDriver(options);
+                using var driver = WebDriverFactory.CreateDriver(scenarioSettings);
                 var service = new FormInteractionService(driver, scenarioSettings);
                 var report = service.ExecuteFullTest();
                 scenarioResults.Add((name, report));

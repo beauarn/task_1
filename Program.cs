@@ -35,6 +35,7 @@ namespace ResilientFormAutomation
             Console.ForegroundColor = ConsoleColor.DarkCyan;
             Console.WriteLine("CONFIGURATION LOADED:");
             Console.WriteLine($"  • Target URL   : {settings.TargetUrl}");
+            Console.WriteLine($"  • Browser      : {settings.Browser}");
             Console.WriteLine($"  • First Name   : {settings.FirstName}");
             Console.WriteLine($"  • Gender       : {settings.Gender}");
             Console.WriteLine($"  • State        : {settings.State}");
@@ -52,21 +53,10 @@ namespace ResilientFormAutomation
                 return 0;
             }
 
-            // 3. Setup ChromeDriver
-            var options = new ChromeOptions();
-            if (settings.Headless)
-            {
-                options.AddArgument("--headless=new");
-            }
-            options.AddArgument("--disable-gpu");
-            options.AddArgument("--no-sandbox");
-            options.AddArgument("--disable-dev-shm-usage");
-            options.AddArgument("--window-size=1366,768");
-            options.AddArgument("--log-level=3");
-
+            // 3. Initialize Browser Driver via Factory (Chrome, Brave, Firefox, Edge)
             try
             {
-                using var driver = new ChromeDriver(options);
+                using var driver = WebDriverFactory.CreateDriver(settings);
                 var service = new FormInteractionService(driver, settings);
                 var report = service.ExecuteFullTest();
 
@@ -155,6 +145,38 @@ namespace ResilientFormAutomation
                 else if (arg.Equals("--frame", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
                 {
                     settings.TargetFrame = args[++i];
+                }
+                else if (arg.StartsWith("--browser=", StringComparison.OrdinalIgnoreCase))
+                {
+                    settings.Browser = arg.Substring(10);
+                }
+                else if ((arg.Equals("--browser", StringComparison.OrdinalIgnoreCase) || arg.Equals("-b", StringComparison.OrdinalIgnoreCase)) && i + 1 < args.Length)
+                {
+                    settings.Browser = args[++i];
+                }
+                else if (arg.StartsWith("--browser-binary=", StringComparison.OrdinalIgnoreCase))
+                {
+                    settings.BrowserBinaryPath = arg.Substring(17);
+                }
+                else if (arg.Equals("--browser-binary", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+                {
+                    settings.BrowserBinaryPath = args[++i];
+                }
+                else if (arg.Equals("--chrome", StringComparison.OrdinalIgnoreCase))
+                {
+                    settings.Browser = "chrome";
+                }
+                else if (arg.Equals("--brave", StringComparison.OrdinalIgnoreCase))
+                {
+                    settings.Browser = "brave";
+                }
+                else if (arg.Equals("--firefox", StringComparison.OrdinalIgnoreCase))
+                {
+                    settings.Browser = "firefox";
+                }
+                else if (arg.Equals("--edge", StringComparison.OrdinalIgnoreCase))
+                {
+                    settings.Browser = "edge";
                 }
                 else if (arg.Equals("--headless", StringComparison.OrdinalIgnoreCase))
                 {

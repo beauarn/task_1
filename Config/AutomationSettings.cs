@@ -16,5 +16,7 @@ namespace ResilientFormAutomation.Config
         public bool RunMutationTests { get; set; } = false;
         public string TargetFrame { get; set; } = "all";
         public bool KeepBrowserOpen { get; set; } = true;
+        public string Browser { get; set; } = "chrome"; // "chrome" | "brave" | "firefox" | "edge" | "auto"
+        public string BrowserBinaryPath { get; set; } = string.Empty;
     }
 }
