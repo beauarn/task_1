@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Scenario 8: Inputs on the Left, Missing Input, & Multiple First Names</title>
+    <style>
+        body { font-family: sans-serif; padding: 25px; }
+        .row-item { display: flex; align-items: center; gap: 10px; margin-bottom: 15px; }
+        input[type="text"] { width: 180px; padding: 6px; }
+        select { padding: 6px; }
+        .missing-box { color: #888; font-style: italic; }
+    </style>
+</head>
+<body>
+    <h2>Reversed Layout (Inputs on Left) with Multiple First Names & Missing Input</h2>
+    <form>
+        <!-- 1. First Name #1 (Primary Applicant) -->
+        <div class="row-item">
+            <input type="text" id="fn_app1" name="fn_app1" placeholder="Primary">
+            <label for="fn_app1">First Name (Primary Applicant)</label>
+        </div>
+
+        <!-- 2. Distractor with MISSING input: Last Name label exists, but input is completely missing! -->
+        <div class="row-item">
+            <span class="missing-box">[Input removed / missing from DOM]</span>
+            <label for="ln_missing">Last Name (Missing)</label>
+        </div>
+
+        <!-- 3. First Name #2 (Secondary Applicant / Co-Applicant) -->
+        <div class="row-item">
+            <input type="text" id="fn_app2" name="fn_app2" placeholder="Secondary">
+            <label for="fn_app2">First Name (Co-Applicant)</label>
+        </div>
+
+        <!-- 4. Gender: Radio on left of label -->
+        <div class="row-item">
+            <input type="radio" id="rad_m_rev" name="gender_rev" value="Male">
+            <label for="rad_m_rev">Male</label>
+            &nbsp;
+            <input type="radio" id="rad_f_rev" name="gender_rev" value="Female">
+            <label for="rad_f_rev">Female</label>
+        </div>
+
+        <!-- 5. State: Dropdown on left of label -->
+        <div class="row-item">
+            <select id="sel_state_rev" name="sel_state_rev">
+                <option value="">Select State</option>
+                <option value="United States">United States</option>
+                <option value="Canada">Canada</option>
+            </select>
+            <label for="sel_state_rev">State</label>
+        </div>
+    </form>
+</body>
+</html>

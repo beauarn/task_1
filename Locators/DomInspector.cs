@@ -120,6 +120,22 @@ namespace ResilientFormAutomation.Locators
             }
         }
 
+        public bool IsSameHorizontalRow(IWebElement fromElem, IWebElement toElem, int tolerancePx = 25)
+        {
+            try
+            {
+                var r1 = GetBoundingRect(fromElem);
+                var r2 = GetBoundingRect(toElem);
+                double c1y = r1.Y + r1.Height / 2.0;
+                double c2y = r2.Y + r2.Height / 2.0;
+                return Math.Abs(c2y - c1y) <= tolerancePx;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         public bool IsVisible(IWebElement element)
         {
             try

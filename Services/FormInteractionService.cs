@@ -83,14 +83,14 @@ namespace ResilientFormAutomation.Services
             var sw = Stopwatch.StartNew();
             Console.WriteLine();
             Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine($"[FIELD 1/3] Resolving 'First Name' text box...");
+            Console.WriteLine($"[FIELD 1/3] Resolving 'First Name' text box(es)...");
             Console.ResetColor();
 
             try
             {
-                var match = ResolveFieldWithContextFallback(() => _resolver.ResolveFirstName());
+                var matches = ResolveAllFirstNamesWithFallback();
 
-                if (match == null)
+                if (matches.Count == 0)
                 {
                     step.Success = false;
                     step.ErrorMessage = "No suitable 'First Name' input element could be identified with sufficient confidence.";
@@ -100,63 +100,64 @@ namespace ResilientFormAutomation.Services
                     return step;
                 }
 
-                step.WinningStrategy = match.StrategyName;
-                step.ConfidenceScore = match.ConfidenceScore;
-                step.StrategyLog.AddRange(match.Reasoning);
+                step.WinningStrategy = matches[0].StrategyName;
+                step.ConfidenceScore = matches[0].ConfidenceScore;
+                step.StrategyLog.AddRange(matches[0].Reasoning);
 
-                Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine($"  ✔ Candidate Found: {match.ElementSummary}");
-                Console.WriteLine($"  ✔ Confidence Score: {match.ConfidenceScore:F1}/100");
-                Console.WriteLine($"  ✔ Match Signals:");
-                foreach (var r in match.Reasoning)
+                if (matches.Count > 1)
                 {
-                    Console.WriteLine($"     - {r}");
-                }
-                Console.ResetColor();
-
-                var input = match.Element;
-                if (_settings.HighlightElements) _inspector.Highlight(input, "#ffc107");
-                _inspector.ScrollIntoView(input);
-                Thread.Sleep(200);
-
-                // Clear & Enter text
-                try
-                {
-                    input.Clear();
-                }
-                catch { }
-
-                // Fallback clear using Ctrl+A + Backspace in case of masked/controlled inputs
-                try
-                {
-                    input.SendKeys(Keys.Control + "a");
-                    input.SendKeys(Keys.Backspace);
-                }
-                catch { }
-
-                input.SendKeys(firstNameValue);
-                _inspector.DispatchInputEvents(input);
-
-                if (_settings.HighlightElements) _inspector.Highlight(input, "#28a745");
-                Thread.Sleep(200);
-
-                // Verification
-                string actualValue = input.GetAttribute("value") ?? "";
-                step.ActualValue = actualValue;
-
-                if (actualValue.Equals(firstNameValue, StringComparison.OrdinalIgnoreCase))
-                {
-                    step.Success = true;
                     Console.ForegroundColor = ConsoleColor.Green;
-                    Console.WriteLine($"  ✔ Successfully entered '{firstNameValue}' and verified value='{actualValue}'");
+                    Console.WriteLine($"  ✔ Found {matches.Count} 'First Name' fields on page! Automating EVERY instance with '{firstNameValue}'...");
                     Console.ResetColor();
                 }
-                else
+
+                bool allSucceeded = true;
+                var valuesRecorded = new List<string>();
+
+                for (int i = 0; i < matches.Count; i++)
                 {
-                    // Fallback verify: might be rendered as text or inner text
-                    step.Success = !string.IsNullOrEmpty(actualValue);
-                    Console.WriteLine($"  ⚠ Field value read back as '{actualValue}' (expected: '{firstNameValue}')");
+                    var match = matches[i];
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine($"  ✔ [Instance #{i + 1}] Found: {match.ElementSummary} (Confidence: {match.ConfidenceScore:F1}/100)");
+                    Console.ResetColor();
+
+                    var input = match.Element;
+                    if (_settings.HighlightElements) _inspector.Highlight(input, "#ffc107");
+                    _inspector.ScrollIntoView(input);
+                    Thread.Sleep(150);
+
+                    // Clear & Enter text
+                    try { input.Clear(); } catch { }
+                    try { input.SendKeys(Keys.Control + "a"); input.SendKeys(Keys.Backspace); } catch { }
+
+                    input.SendKeys(firstNameValue);
+                    _inspector.DispatchInputEvents(input);
+
+                    if (_settings.HighlightElements) _inspector.Highlight(input, "#28a745");
+                    Thread.Sleep(150);
+
+                    // Verification
+                    string actualValue = input.GetAttribute("value") ?? "";
+                    valuesRecorded.Add(actualValue);
+
+                    if (actualValue.Equals(firstNameValue, StringComparison.OrdinalIgnoreCase))
+                    {
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        Console.WriteLine($"     ✔ Successfully entered '{firstNameValue}' and verified value='{actualValue}'");
+                        Console.ResetColor();
+                    }
+                    else if (!string.IsNullOrEmpty(actualValue))
+                    {
+                        Console.WriteLine($"     ⚠ Field value read back as '{actualValue}' (expected: '{firstNameValue}')");
+                    }
+                    else
+                    {
+                        allSucceeded = false;
+                    }
                 }
+
+                step.ActualValue = string.Join(", ", valuesRecorded);
+                step.Success = allSucceeded;
             }
             catch (Exception ex)
             {
@@ -173,6 +174,18 @@ namespace ResilientFormAutomation.Services
             }
 
             return step;
+        }
+
+        private List<CandidateMatch> ResolveAllFirstNamesWithFallback()
+        {
+            var matches = _resolver.ResolveAllFirstNames();
+            if (matches.Count > 0)
+            {
+                return matches;
+            }
+
+            var single = ResolveFieldWithContextFallback(() => _resolver.ResolveFirstName());
+            return single != null ? new List<CandidateMatch> { single } : new List<CandidateMatch>();
         }
 
         public StepResult TestGenderField(string genderValue)

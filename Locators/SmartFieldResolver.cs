@@ -48,13 +48,59 @@ namespace ResilientFormAutomation.Locators
 
         #region First Name Resolution
 
+        public List<CandidateMatch> ResolveAllFirstNames()
+        {
+            var candidates = EvaluateAllFirstNameCandidates();
+            var ranked = candidates.Where(c => c.ConfidenceScore >= 35).OrderByDescending(c => c.ConfidenceScore).ToList();
+            if (ranked.Count > 0)
+            {
+                double topScore = ranked[0].ConfidenceScore;
+                return ranked.Where(c => c.ConfidenceScore >= Math.Max(35, topScore * 0.45)).ToList();
+            }
+
+            var single = ResolveFirstName();
+            return single != null ? new List<CandidateMatch> { single } : new List<CandidateMatch>();
+        }
+
         public CandidateMatch? ResolveFirstName()
+        {
+            var candidates = EvaluateAllFirstNameCandidates();
+            var ranked = candidates.OrderByDescending(c => c.ConfidenceScore).ToList();
+            var bestMatch = ranked.FirstOrDefault();
+            if (bestMatch != null && bestMatch.ConfidenceScore >= 20)
+            {
+                return bestMatch;
+            }
+
+            // Fallback Cascade: If all semantic scores are low/zero (extreme anonymization/no labels)
+            // Select the first visible editable text box that does not conflict with competing tokens
+            var inputs = FindAllPotentialTextInputs();
+            var fallbackInput = inputs.FirstOrDefault(i =>
+            {
+                if (!_inspector.IsVisible(i)) return false;
+                string inputId = (i.GetAttribute("id") ?? "").ToLowerInvariant();
+                string inputName = (i.GetAttribute("name") ?? "").ToLowerInvariant();
+                return !CompetingNameKeywords.Any(k => inputId.Contains(k) || inputName.Contains(k));
+            });
+
+            if (fallbackInput != null)
+            {
+                var fallbackMatch = new CandidateMatch(fallbackInput, 15, "Positional / First-Editable Fallback Heuristic");
+                fallbackMatch.ElementSummary = _inspector.GetElementSummary(fallbackInput);
+                fallbackMatch.AddScore(15, "Selected as primary editable text input in form when all candidate scores were below threshold");
+                return fallbackMatch;
+            }
+
+            return null;
+        }
+
+        private List<CandidateMatch> EvaluateAllFirstNameCandidates()
         {
             var candidates = new List<CandidateMatch>();
 
             // 1. Gather all potential text-like input elements
             var inputs = FindAllPotentialTextInputs();
-            if (inputs.Count == 0) return null;
+            if (inputs.Count == 0) return candidates;
 
             // 2. Gather all label elements on the page (pre-cache metadata for optimal performance)
             var rawLabels = _driver.FindElements(By.TagName("label")).ToList();
@@ -193,10 +239,14 @@ namespace ResilientFormAutomation.Locators
                         if (isVisible)
                         {
                             double distance = _inspector.CalculateDistance(label.Element, input);
-                            if (distance < 180)
+                            if (distance < 220)
                             {
-                                double proximityPoints = Math.Max(5, 30 - (distance / 6.0));
+                                double proximityPoints = Math.Max(5, 30 - (distance / 7.0));
                                 candidate.AddScore(proximityPoints, $"High visual proximity to label '{label.Text}' (distance: {distance:F0}px)");
+                            }
+                            if (_inspector.IsSameHorizontalRow(label.Element, input))
+                            {
+                                candidate.AddScore(25, $"Shares exact horizontal row baseline with label '{label.Text}'");
                             }
                         }
 
@@ -222,10 +272,14 @@ namespace ResilientFormAutomation.Locators
                         if (isVisible)
                         {
                             double distance = _inspector.CalculateDistance(label.Element, input);
-                            if (distance < 180)
+                            if (distance < 220)
                             {
                                 double proximityPoints = Math.Max(5, 20 - (distance / 9.0));
                                 candidate.AddScore(proximityPoints, $"High visual proximity to generic label '{label.Text}' (distance: {distance:F0}px)");
+                            }
+                            if (_inspector.IsSameHorizontalRow(label.Element, input))
+                            {
+                                candidate.AddScore(20, $"Shares horizontal row baseline with generic label '{label.Text}'");
                             }
                         }
                     }
@@ -238,33 +292,7 @@ namespace ResilientFormAutomation.Locators
                 candidates.Add(candidate);
             }
 
-            // Return top candidate with score >= 20
-            var ranked = candidates.OrderByDescending(c => c.ConfidenceScore).ToList();
-            var bestMatch = ranked.FirstOrDefault();
-            if (bestMatch != null && bestMatch.ConfidenceScore >= 20)
-            {
-                return bestMatch;
-            }
-
-            // Fallback Cascade: If all semantic scores are low/zero (extreme anonymization/no labels)
-            // Select the first visible editable text box that does not conflict with competing tokens
-            var fallbackInput = inputs.FirstOrDefault(i =>
-            {
-                if (!_inspector.IsVisible(i)) return false;
-                string inputId = (i.GetAttribute("id") ?? "").ToLowerInvariant();
-                string inputName = (i.GetAttribute("name") ?? "").ToLowerInvariant();
-                return !CompetingNameKeywords.Any(k => inputId.Contains(k) || inputName.Contains(k));
-            });
-
-            if (fallbackInput != null)
-            {
-                var fallbackMatch = new CandidateMatch(fallbackInput, 15, "Positional / First-Editable Fallback Heuristic");
-                fallbackMatch.ElementSummary = _inspector.GetElementSummary(fallbackInput);
-                fallbackMatch.AddScore(15, "Selected as primary editable text input in form when all candidate scores were below threshold");
-                return fallbackMatch;
-            }
-
-            return null;
+            return candidates;
         }
 
         #endregion

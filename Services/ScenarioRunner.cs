@@ -44,6 +44,7 @@ namespace ResilientFormAutomation.Services
                 ("Scenario 5: Generic 'Name' Label (Instead of 'First Name')", Path.Combine(scenariosDir, "scenario5_generic_name_label.html")),
                 ("Scenario 6: Linear Horizontal Line Layout (Single-Line Flex/Inline)", Path.Combine(scenariosDir, "scenario6_linear_inline_layout.html")),
                 ("Scenario 7: Form Inside IFrame Without ID (Embedded Frame Context)", Path.Combine(scenariosDir, "scenario7_embedded_iframe_no_id.html")),
+                ("Scenario 8: Inputs on Left, Missing Input & Multiple First Names", Path.Combine(scenariosDir, "scenario8_reversed_inline_with_missing_input.html")),
             };
 
             var scenarioResults = new List<(string Name, AutomationReport Report)>();

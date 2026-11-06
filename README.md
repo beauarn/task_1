@@ -98,8 +98,11 @@ To prove that the solution fulfills requirement #3 ("keeps working when page cha
 | **Live Web Page** | Standard page at `app.cloudqa.io` | **PASS** (290 pts) | **PASS** (225 pts) | **PASS** (290 pts) | **PASS ✅** |
 | **Scenario 1: Reordered Elements** | State at top, First Name at bottom, Gender in middle | **PASS** (220 pts) | **PASS** (170 pts) | **PASS** (245 pts) | **PASS ✅** |
 | **Scenario 2: Dynamic GUIDs** | Obfuscated Tailwind classes, GUID IDs (`f_guid_8283a`) | **PASS** (275 pts) | **PASS** (140 pts) | **PASS** (245 pts) | **PASS ✅** |
-| **Scenario 3: Table Layout** | Form inside `<table><tr><td>`, no classes or `for` tags | **PASS** (150 pts) | **PASS** (130 pts) | **PASS** (185 pts) | **PASS ✅** |
+| **Scenario 3: Table Layout** | Form inside `<table><tr><td>`, no classes or `for` tags | **PASS** (30 pts) | **PASS** (135 pts) | **PASS** (65 pts) | **PASS ✅** |
 | **Scenario 4: High Disambiguation** | First, Middle, Last, Username, Country, State, City | **PASS** (256 pts) | **PASS** (140 pts) | **PASS** (200 pts) | **PASS ✅** |
+| **Scenario 5: Generic 'Name' Label** | Form uses `<label>Name</label>` instead of 'First Name' | **PASS** (135 pts) | **PASS** (170 pts) | **PASS** (200 pts) | **PASS ✅** |
+| **Scenario 6: Linear Horizontal Line** | All fields on a single continuous horizontal row | **PASS** (130 pts) | **PASS** (140 pts) | **PASS** (155 pts) | **PASS ✅** |
+| **Scenario 7: IFrame Without ID** | Form hosted inside `<iframe>` with NO ID and NO Name | **PASS** (245 pts) | **PASS** (170 pts) | **PASS** (245 pts) | **PASS ✅** |
 
 ---
 
