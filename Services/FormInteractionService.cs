@@ -76,10 +76,46 @@ namespace ResilientFormAutomation.Services
         private class FormContextInfo
         {
             public string Name { get; set; } = string.Empty;
-            public bool IsIframe { get; set; }
-            public int IframeIndex { get; set; } = -1;
+            public List<int> FrameHierarchy { get; set; } = new List<int>();
             public string IframeId { get; set; } = string.Empty;
             public string IframeSrc { get; set; } = string.Empty;
+            public bool IsIframe => FrameHierarchy.Count > 0;
+        }
+
+        private bool SwitchToHierarchy(List<int> hierarchy)
+        {
+            try
+            {
+                _driver.SwitchTo().DefaultContent();
+
+                for (int depth = 0; depth < hierarchy.Count; depth++)
+                {
+                    int frameIdx = hierarchy[depth];
+                    var iframes = _driver.FindElements(By.TagName("iframe"));
+                    if (frameIdx < 0 || frameIdx >= iframes.Count)
+                    {
+                        return false;
+                    }
+
+                    var iframeElem = iframes[frameIdx];
+                    try
+                    {
+                        ((IJavaScriptExecutor)_driver).ExecuteScript(
+                            "arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", iframeElem);
+                        Thread.Sleep(200);
+                    }
+                    catch { }
+
+                    _driver.SwitchTo().Frame(iframeElem);
+                    WaitForPageReady();
+                }
+
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private List<FormContextInfo> DetermineExecutionContexts()
@@ -92,61 +128,109 @@ namespace ResilientFormAutomation.Services
             if (mainHasInputs && (_settings.TargetFrame.Equals("all", StringComparison.OrdinalIgnoreCase) ||
                                   _settings.TargetFrame.Equals("main", StringComparison.OrdinalIgnoreCase)))
             {
-                contexts.Add(new FormContextInfo { Name = "Main Document (Default Content)", IsIframe = false });
+                contexts.Add(new FormContextInfo 
+                { 
+                    Name = "Main Document (Default Content)", 
+                    FrameHierarchy = new List<int>() 
+                });
             }
 
-            // 2. Scan for IFrames
-            var rawFrames = _driver.FindElements(By.TagName("iframe")).ToList();
-            for (int i = 0; i < rawFrames.Count; i++)
-            {
-                var f = rawFrames[i];
-                string id = (f.GetAttribute("id") ?? "").Trim();
-                string src = (f.GetAttribute("src") ?? "").Trim();
-                bool isNoId = string.IsNullOrEmpty(id);
-
-                bool shouldInclude = false;
-
-                if (_settings.TargetFrame.Equals("all", StringComparison.OrdinalIgnoreCase))
-                {
-                    shouldInclude = true;
-                }
-                else if (_settings.TargetFrame.Equals("no-id", StringComparison.OrdinalIgnoreCase) && isNoId)
-                {
-                    shouldInclude = true;
-                }
-                else if (_settings.TargetFrame.Equals("iframeId", StringComparison.OrdinalIgnoreCase) && id.Equals("iframeId", StringComparison.OrdinalIgnoreCase))
-                {
-                    shouldInclude = true;
-                }
-                else if (!string.IsNullOrEmpty(id) && _settings.TargetFrame.Equals(id, StringComparison.OrdinalIgnoreCase))
-                {
-                    shouldInclude = true;
-                }
-
-                if (shouldInclude)
-                {
-                    string label = isNoId 
-                        ? $"IFrame without ID (Index #{i}, src='{src}')" 
-                        : $"IFrame with ID '{id}' (Index #{i})";
-
-                    contexts.Add(new FormContextInfo
-                    {
-                        Name = label,
-                        IsIframe = true,
-                        IframeIndex = i,
-                        IframeId = id,
-                        IframeSrc = src
-                    });
-                }
-            }
+            // 2. Discover all iframes recursively (depth 1 to 4)
+            DiscoverFramesRecursive(new List<int>(), contexts, 0, 4);
 
             // If no contexts matched, fallback to main document
             if (contexts.Count == 0)
             {
-                contexts.Add(new FormContextInfo { Name = "Default Document Context", IsIframe = false });
+                contexts.Add(new FormContextInfo { Name = "Default Document Context", FrameHierarchy = new List<int>() });
             }
 
             return contexts;
+        }
+
+        private void DiscoverFramesRecursive(List<int> parentPath, List<FormContextInfo> contexts, int currentDepth, int maxDepth)
+        {
+            if (currentDepth >= maxDepth) return;
+
+            if (!SwitchToHierarchy(parentPath)) return;
+
+            var rawFrames = _driver.FindElements(By.TagName("iframe")).ToList();
+            int frameCount = rawFrames.Count;
+
+            for (int i = 0; i < frameCount; i++)
+            {
+                // Re-navigate to parent to ensure fresh DOM state
+                if (!SwitchToHierarchy(parentPath)) break;
+                var currentFrames = _driver.FindElements(By.TagName("iframe"));
+                if (i >= currentFrames.Count) break;
+
+                var f = currentFrames[i];
+                string id = (f.GetAttribute("id") ?? "").Trim();
+                string src = (f.GetAttribute("src") ?? "").Trim();
+                bool isNoId = string.IsNullOrEmpty(id);
+
+                var childPath = new List<int>(parentPath) { i };
+
+                // Inspect contents of this frame
+                bool switched = false;
+                try
+                {
+                    _driver.SwitchTo().Frame(f);
+                    switched = true;
+                    WaitForPageReady();
+
+                    var inputs = _driver.FindElements(By.TagName("input"));
+                    var selects = _driver.FindElements(By.TagName("select"));
+                    bool hasFormElements = inputs.Count > 0 || selects.Count > 0;
+
+                    string depthLabel = currentDepth == 0 ? "IFrame" : $"Nested IFrame (Depth #{currentDepth + 1})";
+                    string label = isNoId 
+                        ? $"{depthLabel} without ID (Index #{i}, src='{src}')" 
+                        : $"{depthLabel} with ID '{id}' (Index #{i})";
+
+                    bool shouldInclude = false;
+                    if (_settings.TargetFrame.Equals("all", StringComparison.OrdinalIgnoreCase))
+                    {
+                        shouldInclude = hasFormElements;
+                    }
+                    else if (_settings.TargetFrame.Equals("no-id", StringComparison.OrdinalIgnoreCase) && isNoId)
+                    {
+                        shouldInclude = hasFormElements;
+                    }
+                    else if (_settings.TargetFrame.Equals("iframeId", StringComparison.OrdinalIgnoreCase) && id.Equals("iframeId", StringComparison.OrdinalIgnoreCase))
+                    {
+                        shouldInclude = hasFormElements;
+                    }
+                    else if (!string.IsNullOrEmpty(id) && _settings.TargetFrame.Equals(id, StringComparison.OrdinalIgnoreCase))
+                    {
+                        shouldInclude = hasFormElements;
+                    }
+
+                    if (shouldInclude)
+                    {
+                        contexts.Add(new FormContextInfo
+                        {
+                            Name = label,
+                            FrameHierarchy = childPath,
+                            IframeId = id,
+                            IframeSrc = src
+                        });
+                    }
+
+                    // Recurse deeper inside this frame to find child/grandchild iframes!
+                    DiscoverFramesRecursive(childPath, contexts, currentDepth + 1, maxDepth);
+                }
+                catch
+                {
+                    // Frame access denied (e.g. cross-origin) or detached
+                }
+                finally
+                {
+                    if (switched)
+                    {
+                        SwitchToHierarchy(parentPath);
+                    }
+                }
+            }
         }
 
         private void ExecuteContext(FormContextInfo ctx, AutomationReport report)
@@ -158,41 +242,19 @@ namespace ResilientFormAutomation.Services
             Console.WriteLine("-------------------------------------------------------------------------------");
             Console.ResetColor();
 
-            _driver.SwitchTo().DefaultContent();
-
-            if (ctx.IsIframe)
+            if (!SwitchToHierarchy(ctx.FrameHierarchy))
             {
-                // Re-find the iframe element by index
-                var iframes = _driver.FindElements(By.TagName("iframe"));
-                if (ctx.IframeIndex >= 0 && ctx.IframeIndex < iframes.Count)
-                {
-                    var iframeElem = iframes[ctx.IframeIndex];
-                    try
-                    {
-                        // Scroll iframe into view in parent window
-                        ((IJavaScriptExecutor)_driver).ExecuteScript(
-                            "arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", iframeElem);
-                        Thread.Sleep(300);
-                    }
-                    catch { }
+                Console.WriteLine($"⚠ Could not switch to context {ctx.Name}");
+                return;
+            }
 
-                    _driver.SwitchTo().Frame(iframeElem);
-                    WaitForPageReady();
-
-                    // Check if this iframe actually has form elements (avoids failing on tracking/ad/blank iframes)
-                    var formElements = _driver.FindElements(By.XPath("//input | //select | //form | //textarea"));
-                    if (formElements.Count == 0)
-                    {
-                        Console.WriteLine($"  ℹ Skipping {ctx.Name}: No form elements detected inside this frame.");
-                        _driver.SwitchTo().DefaultContent();
-                        return;
-                    }
-                }
-                else
-                {
-                    Console.WriteLine($"⚠ Could not switch to {ctx.Name}");
-                    return;
-                }
+            // Check if this iframe actually has form elements (avoids failing on tracking/ad/blank iframes)
+            var formElements = _driver.FindElements(By.XPath("//input | //select | //form | //textarea"));
+            if (formElements.Count == 0 && ctx.IsIframe)
+            {
+                Console.WriteLine($"  ℹ Skipping {ctx.Name}: No form elements detected inside this frame.");
+                _driver.SwitchTo().DefaultContent();
+                return;
             }
 
             // Run the 3 fields inside this context:
@@ -360,9 +422,16 @@ namespace ResilientFormAutomation.Services
 
             try
             {
-                var match = ResolveFieldWithContextFallback(() => _resolver.ResolveGender(genderValue));
+                var matches = _resolver.ResolveAllGenders(genderValue);
+                if (matches.Count == 0)
+                {
+                    if (ResolveFieldWithContextFallback(() => _resolver.ResolveGender(genderValue)) is { } s)
+                    {
+                        matches.Add(s);
+                    }
+                }
 
-                if (match == null)
+                if (matches.Count == 0)
                 {
                     step.Success = false;
                     step.ErrorMessage = $"No suitable radio button for Gender='{genderValue}' could be identified.";
@@ -372,78 +441,60 @@ namespace ResilientFormAutomation.Services
                     return step;
                 }
 
-                step.WinningStrategy = match.StrategyName;
-                step.ConfidenceScore = match.ConfidenceScore;
-                step.StrategyLog.AddRange(match.Reasoning);
+                step.WinningStrategy = matches[0].StrategyName;
+                step.ConfidenceScore = matches[0].ConfidenceScore;
+                step.StrategyLog.AddRange(matches[0].Reasoning);
 
-                Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine($"  ✔ Candidate Found: {match.ElementSummary}");
-                Console.WriteLine($"  ✔ Confidence Score: {match.ConfidenceScore:F1}/100");
-                Console.WriteLine($"  ✔ Match Signals:");
-                foreach (var r in match.Reasoning)
+                if (matches.Count > 1)
                 {
-                    Console.WriteLine($"     - {r}");
-                }
-                Console.ResetColor();
-
-                var radio = match.Element;
-                if (_settings.HighlightElements) _inspector.Highlight(radio, "#ffc107");
-                _inspector.ScrollIntoView(radio);
-                Thread.Sleep(200);
-
-                // Perform click with fallback
-                bool clicked = false;
-
-                // Attempt 1: Click the ClickTarget (associated label/span) if present
-                if (match.ClickTarget != null)
-                {
-                    try
-                    {
-                        if (_settings.HighlightElements) _inspector.Highlight(match.ClickTarget, "#ffc107");
-                        match.ClickTarget.Click();
-                        clicked = true;
-                    }
-                    catch { }
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine($"  ✔ Found {matches.Count} 'Gender' radio groups on page! Automating EVERY group with '{genderValue}'...");
+                    Console.ResetColor();
                 }
 
-                // Attempt 2: Direct click on radio
-                if (!clicked || !radio.Selected)
+                var valuesRecorded = new List<string>();
+
+                for (int i = 0; i < matches.Count; i++)
                 {
+                    var match = matches[i];
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine($"  ✔ [Instance #{i + 1}] Found: {match.ElementSummary} (Confidence: {match.ConfidenceScore:F1}/100)");
+                    Console.ResetColor();
+
+                    var radio = match.Element;
+                    if (_settings.HighlightElements) _inspector.Highlight(radio, "#ffc107");
+                    _inspector.ScrollIntoView(radio);
+                    Thread.Sleep(150);
+
+                    // Click Target
+                    var clickTarget = match.ClickTarget ?? radio;
                     try
                     {
-                        radio.Click();
-                        clicked = true;
+                        clickTarget.Click();
                     }
                     catch
                     {
-                        // Attempt 3: JavaScript click
-                        _inspector.JsClick(radio);
-                        clicked = true;
+                        ((IJavaScriptExecutor)_driver).ExecuteScript("arguments[0].click();", clickTarget);
                     }
-                }
 
-                _inspector.DispatchInputEvents(radio);
-                if (_settings.HighlightElements) _inspector.Highlight(radio, "#28a745");
-                Thread.Sleep(200);
+                    if (!radio.Selected)
+                    {
+                        ((IJavaScriptExecutor)_driver).ExecuteScript("arguments[0].checked = true; arguments[0].dispatchEvent(new Event('change', { bubbles: true }));", radio);
+                    }
 
-                // Verification
-                bool isSelected = radio.Selected;
-                step.ActualValue = isSelected ? $"{genderValue} (Selected)" : "Not Selected";
+                    _inspector.DispatchInputEvents(radio);
+                    if (_settings.HighlightElements) _inspector.Highlight(radio, "#28a745");
+                    Thread.Sleep(150);
 
-                if (isSelected)
-                {
-                    step.Success = true;
+                    bool isSelected = radio.Selected;
+                    valuesRecorded.Add(isSelected ? $"{genderValue} (Selected)" : $"{genderValue} (Clicked)");
                     Console.ForegroundColor = ConsoleColor.Green;
                     Console.WriteLine($"  ✔ Successfully selected '{genderValue}' radio button (Selected={isSelected})");
                     Console.ResetColor();
                 }
-                else
-                {
-                    // Some custom radio buttons maintain selection via class/parent attribute
-                    step.Success = true; // Click executed
-                    step.ActualValue = $"{genderValue} (Clicked)";
-                    Console.WriteLine($"  ⚠ Click executed on radio button or label.");
-                }
+
+                step.Success = true;
+                step.ActualValue = string.Join(", ", valuesRecorded);
             }
             catch (Exception ex)
             {
@@ -478,9 +529,16 @@ namespace ResilientFormAutomation.Services
 
             try
             {
-                var match = ResolveFieldWithContextFallback(() => _resolver.ResolveState(stateValue));
+                var matches = _resolver.ResolveAllStates(stateValue);
+                if (matches.Count == 0)
+                {
+                    if (ResolveFieldWithContextFallback(() => _resolver.ResolveState(stateValue)) is { } s)
+                    {
+                        matches.Add(s);
+                    }
+                }
 
-                if (match == null)
+                if (matches.Count == 0)
                 {
                     step.Success = false;
                     step.ErrorMessage = $"No suitable dropdown for State='{stateValue}' could be identified.";
@@ -490,163 +548,169 @@ namespace ResilientFormAutomation.Services
                     return step;
                 }
 
-                step.WinningStrategy = match.StrategyName;
-                step.ConfidenceScore = match.ConfidenceScore;
-                step.StrategyLog.AddRange(match.Reasoning);
+                step.WinningStrategy = matches[0].StrategyName;
+                step.ConfidenceScore = matches[0].ConfidenceScore;
+                step.StrategyLog.AddRange(matches[0].Reasoning);
 
-                Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine($"  ✔ Candidate Found: {match.ElementSummary}");
-                Console.WriteLine($"  ✔ Confidence Score: {match.ConfidenceScore:F1}/100");
-                Console.WriteLine($"  ✔ Match Signals:");
-                foreach (var r in match.Reasoning)
+                if (matches.Count > 1)
                 {
-                    Console.WriteLine($"     - {r}");
-                }
-                Console.ResetColor();
-
-                var element = match.Element;
-                if (_settings.HighlightElements) _inspector.Highlight(element, "#ffc107");
-                _inspector.ScrollIntoView(element);
-                Thread.Sleep(200);
-
-                if (element.TagName.Equals("select", StringComparison.OrdinalIgnoreCase))
-                {
-                    var select = new SelectElement(element);
-                    bool selected = false;
-
-                    // Strategy 1: Select by exact visible text
-                    try
-                    {
-                        select.SelectByText(stateValue);
-                        selected = true;
-                    }
-                    catch { }
-
-                    // Strategy 2: Select by partial text or common country/state aliases
-                    if (!selected)
-                    {
-                        try
-                        {
-                            var option = select.Options.FirstOrDefault(o =>
-                                o.Text.Contains(stateValue, StringComparison.OrdinalIgnoreCase) ||
-                                (stateValue.Equals("United States", StringComparison.OrdinalIgnoreCase) &&
-                                 (o.Text.Trim().Equals("US", StringComparison.OrdinalIgnoreCase) ||
-                                  o.Text.Trim().Equals("USA", StringComparison.OrdinalIgnoreCase) ||
-                                  o.Text.Contains("United States", StringComparison.OrdinalIgnoreCase))));
-                            if (option != null)
-                            {
-                                select.SelectByText(option.Text);
-                                selected = true;
-                            }
-                        }
-                        catch { }
-                    }
-
-                    // Strategy 3: Select by value attribute or aliases
-                    if (!selected)
-                    {
-                        try
-                        {
-                            select.SelectByValue(stateValue);
-                            selected = true;
-                        }
-                        catch
-                        {
-                            if (stateValue.Equals("United States", StringComparison.OrdinalIgnoreCase))
-                            {
-                                try { select.SelectByValue("US"); selected = true; } catch { }
-                                if (!selected) try { select.SelectByValue("USA"); selected = true; } catch { }
-                            }
-                        }
-                    }
-
-                    // Strategy 4: JavaScript select
-                    if (!selected)
-                    {
-                        ((IJavaScriptExecutor)_driver).ExecuteScript(@"
-                            var select = arguments[0];
-                            var target = arguments[1].toLowerCase();
-                            for (var i = 0; i < select.options.length; i++) {
-                                var optText = select.options[i].text.toLowerCase();
-                                var optVal = select.options[i].value.toLowerCase();
-                                if (optText.indexOf(target) !== -1 || optVal.indexOf(target) !== -1 ||
-                                    (target === 'united states' && (optText === 'us' || optText === 'usa' || optVal === 'us' || optVal === 'usa'))) {
-                                    select.selectedIndex = i;
-                                    select.dispatchEvent(new Event('change', { bubbles: true }));
-                                    break;
-                                }
-                            }
-                        ", element, stateValue);
-                        selected = true;
-                    }
-
-                    _inspector.DispatchInputEvents(element);
-                    if (_settings.HighlightElements) _inspector.Highlight(element, "#28a745");
-                    Thread.Sleep(200);
-
-                    // Verification
-                    string actualSelected = select.SelectedOption?.Text?.Trim() ?? "";
-                    step.ActualValue = actualSelected;
-
-                    bool isStateVerified = actualSelected.Contains(stateValue, StringComparison.OrdinalIgnoreCase) ||
-                        (stateValue.Equals("United States", StringComparison.OrdinalIgnoreCase) &&
-                         (actualSelected.Equals("US", StringComparison.OrdinalIgnoreCase) ||
-                          actualSelected.Equals("USA", StringComparison.OrdinalIgnoreCase) ||
-                          actualSelected.Contains("United States", StringComparison.OrdinalIgnoreCase)));
-
-                    if (isStateVerified)
-                    {
-                        step.Success = true;
-                        Console.ForegroundColor = ConsoleColor.Green;
-                        Console.WriteLine($"  ✔ Successfully selected '{actualSelected}' in State dropdown");
-                        Console.ResetColor();
-                    }
-                    else
-                    {
-                        step.Success = selected;
-                        Console.WriteLine($"  ⚠ State selection attempted; selected text: '{actualSelected}'");
-                    }
-                }
-                else if (element.TagName.Equals("input", StringComparison.OrdinalIgnoreCase))
-                {
-                    // Input / Datalist State field
-                    try { element.Clear(); } catch { }
-                    element.SendKeys(stateValue);
-                    _inspector.DispatchInputEvents(element);
-
-                    string actualVal = element.GetAttribute("value") ?? stateValue;
-                    step.Success = true;
-                    step.ActualValue = actualVal;
-
-                    if (_settings.HighlightElements) _inspector.Highlight(element, "#28a745");
                     Console.ForegroundColor = ConsoleColor.Green;
-                    Console.WriteLine($"  ✔ Successfully entered '{actualVal}' into State input field");
+                    Console.WriteLine($"  ✔ Found {matches.Count} 'State' dropdowns on page! Automating EVERY instance with '{stateValue}'...");
                     Console.ResetColor();
                 }
-                else
+
+                var valuesRecorded = new List<string>();
+                bool anyFailed = false;
+
+                for (int i = 0; i < matches.Count; i++)
                 {
-                    // Custom dropdown (e.g. Bootstrap dropdown button)
-                    element.Click();
-                    Thread.Sleep(300);
+                    var match = matches[i];
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine($"  ✔ [Instance #{i + 1}] Found: {match.ElementSummary} (Confidence: {match.ConfidenceScore:F1}/100)");
+                    Console.ResetColor();
 
-                    var options = _driver.FindElements(By.XPath($"//*[contains(text(), '{stateValue}')]"));
-                    var targetOption = options.FirstOrDefault(o => _inspector.IsVisible(o));
+                    var element = match.Element;
+                    if (_settings.HighlightElements) _inspector.Highlight(element, "#ffc107");
+                    _inspector.ScrollIntoView(element);
+                    Thread.Sleep(200);
 
-                    if (targetOption != null)
+                    if (element.TagName.Equals("select", StringComparison.OrdinalIgnoreCase))
                     {
-                        targetOption.Click();
-                        step.Success = true;
-                        step.ActualValue = targetOption.Text;
+                        var select = new SelectElement(element);
+                        bool selected = false;
+
+                        // Strategy 1: Select by exact visible text
+                        try
+                        {
+                            select.SelectByText(stateValue);
+                            selected = true;
+                        }
+                        catch { }
+
+                        // Strategy 2: Select by partial text or common country/state aliases
+                        if (!selected)
+                        {
+                            try
+                            {
+                                var option = select.Options.FirstOrDefault(o =>
+                                    o.Text.Contains(stateValue, StringComparison.OrdinalIgnoreCase) ||
+                                    (stateValue.Equals("United States", StringComparison.OrdinalIgnoreCase) &&
+                                     (o.Text.Trim().Equals("US", StringComparison.OrdinalIgnoreCase) ||
+                                      o.Text.Trim().Equals("USA", StringComparison.OrdinalIgnoreCase) ||
+                                      o.Text.Contains("United States", StringComparison.OrdinalIgnoreCase))));
+                                if (option != null)
+                                {
+                                    select.SelectByText(option.Text);
+                                    selected = true;
+                                }
+                            }
+                            catch { }
+                        }
+
+                        // Strategy 3: Select by value attribute or aliases
+                        if (!selected)
+                        {
+                            try
+                            {
+                                select.SelectByValue(stateValue);
+                                selected = true;
+                            }
+                            catch
+                            {
+                                if (stateValue.Equals("United States", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    try { select.SelectByValue("US"); selected = true; } catch { }
+                                    if (!selected) try { select.SelectByValue("USA"); selected = true; } catch { }
+                                }
+                            }
+                        }
+
+                        // Strategy 4: JavaScript select
+                        if (!selected)
+                        {
+                            ((IJavaScriptExecutor)_driver).ExecuteScript(@"
+                                var select = arguments[0];
+                                var target = arguments[1].toLowerCase();
+                                for (var i = 0; i < select.options.length; i++) {
+                                    var optText = select.options[i].text.toLowerCase();
+                                    var optVal = select.options[i].value.toLowerCase();
+                                    if (optText.indexOf(target) !== -1 || optVal.indexOf(target) !== -1 ||
+                                        (target === 'united states' && (optText === 'us' || optText === 'usa' || optVal === 'us' || optVal === 'usa'))) {
+                                        select.selectedIndex = i;
+                                        select.dispatchEvent(new Event('change', { bubbles: true }));
+                                        break;
+                                    }
+                                }
+                            ", element, stateValue);
+                            selected = true;
+                        }
+
+                        _inspector.DispatchInputEvents(element);
+                        if (_settings.HighlightElements) _inspector.Highlight(element, "#28a745");
+                        Thread.Sleep(200);
+
+                        // Verification
+                        string actualSelected = select.SelectedOption?.Text?.Trim() ?? "";
+                        valuesRecorded.Add(actualSelected);
+
+                        bool isStateVerified = actualSelected.Contains(stateValue, StringComparison.OrdinalIgnoreCase) ||
+                            (stateValue.Equals("United States", StringComparison.OrdinalIgnoreCase) &&
+                             (actualSelected.Equals("US", StringComparison.OrdinalIgnoreCase) ||
+                              actualSelected.Equals("USA", StringComparison.OrdinalIgnoreCase) ||
+                              actualSelected.Contains("United States", StringComparison.OrdinalIgnoreCase)));
+
+                        if (isStateVerified)
+                        {
+                            Console.ForegroundColor = ConsoleColor.Green;
+                            Console.WriteLine($"  ✔ Successfully selected '{actualSelected}' in State dropdown");
+                            Console.ResetColor();
+                        }
+                        else
+                        {
+                            Console.WriteLine($"  ⚠ State selection attempted; selected text: '{actualSelected}'");
+                        }
+                    }
+                    else if (element.TagName.Equals("input", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Input / Datalist State field
+                        try { element.Clear(); } catch { }
+                        element.SendKeys(stateValue);
+                        _inspector.DispatchInputEvents(element);
+
+                        string actualVal = element.GetAttribute("value") ?? stateValue;
+                        valuesRecorded.Add(actualVal);
+
+                        if (_settings.HighlightElements) _inspector.Highlight(element, "#28a745");
                         Console.ForegroundColor = ConsoleColor.Green;
-                        Console.WriteLine($"  ✔ Successfully clicked option '{targetOption.Text}' in custom dropdown");
+                        Console.WriteLine($"  ✔ Successfully entered '{actualVal}' into State input field");
                         Console.ResetColor();
                     }
                     else
                     {
-                        step.Success = false;
-                        step.ErrorMessage = $"Could not locate option '{stateValue}' inside custom dropdown.";
+                        // Custom dropdown (e.g. Bootstrap dropdown button)
+                        element.Click();
+                        Thread.Sleep(300);
+
+                        var options = _driver.FindElements(By.XPath($"//*[contains(text(), '{stateValue}')]"));
+                        var targetOption = options.FirstOrDefault(o => _inspector.IsVisible(o));
+
+                        if (targetOption != null)
+                        {
+                            targetOption.Click();
+                            valuesRecorded.Add(targetOption.Text);
+                            Console.ForegroundColor = ConsoleColor.Green;
+                            Console.WriteLine($"  ✔ Successfully clicked option '{targetOption.Text}' in custom dropdown");
+                            Console.ResetColor();
+                        }
+                        else
+                        {
+                            anyFailed = true;
+                        }
                     }
                 }
+
+                step.Success = !anyFailed;
+                step.ActualValue = string.Join(", ", valuesRecorded);
             }
             catch (Exception ex)
             {

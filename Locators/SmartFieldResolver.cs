@@ -327,7 +327,45 @@ namespace ResilientFormAutomation.Locators
 
         #region Gender Resolution
 
+        public List<CandidateMatch> ResolveAllGenders(string targetOption = "Male")
+        {
+            var candidates = EvaluateAllGenderCandidates(targetOption);
+            var eligible = candidates.Where(c => c.ConfidenceScore >= 30).OrderByDescending(c => c.ConfidenceScore).ToList();
+            if (eligible.Count <= 1) return eligible;
+
+            // Group by distinct radio groups (e.g. name or immediate container)
+            var result = new List<CandidateMatch>();
+            var seenGroups = new HashSet<string>();
+
+            foreach (var c in eligible)
+            {
+                string groupKey = c.Element.GetAttribute("name") ?? "";
+                if (string.IsNullOrEmpty(groupKey))
+                {
+                    groupKey = c.Element.GetAttribute("id") ?? Guid.NewGuid().ToString();
+                }
+
+                if (!seenGroups.Contains(groupKey))
+                {
+                    seenGroups.Add(groupKey);
+                    result.Add(c);
+                }
+            }
+
+            if (result.Count > 0) return result;
+
+            var single = ResolveGender(targetOption);
+            return single != null ? new List<CandidateMatch> { single } : new List<CandidateMatch>();
+        }
+
         public CandidateMatch? ResolveGender(string targetOption = "Male")
+        {
+            var candidates = EvaluateAllGenderCandidates(targetOption);
+            var bestMatch = candidates.OrderByDescending(c => c.ConfidenceScore).FirstOrDefault();
+            return bestMatch != null && bestMatch.ConfidenceScore >= 30 ? bestMatch : null;
+        }
+
+        private List<CandidateMatch> EvaluateAllGenderCandidates(string targetOption = "Male")
         {
             var candidates = new List<CandidateMatch>();
             string normalizedTarget = targetOption.Trim();
@@ -335,7 +373,7 @@ namespace ResilientFormAutomation.Locators
 
             // 1. Gather all radio buttons
             var radios = _driver.FindElements(By.XPath("//input[@type='radio']")).ToList();
-            if (radios.Count == 0) return null;
+            if (radios.Count == 0) return candidates;
 
             // 2. Locate gender contextual containers or labels
             var genderLabels = _driver.FindElements(By.XPath("//label | //legend | //span | //h3 | //h4 | //div[contains(@class,'label')]"))
@@ -430,15 +468,53 @@ namespace ResilientFormAutomation.Locators
                 candidates.Add(candidate);
             }
 
-            var bestMatch = candidates.OrderByDescending(c => c.ConfidenceScore).FirstOrDefault();
-            return bestMatch != null && bestMatch.ConfidenceScore >= 30 ? bestMatch : null;
+            return candidates;
         }
 
         #endregion
 
         #region State Dropdown Resolution
 
+        public List<CandidateMatch> ResolveAllStates(string targetState = "United States")
+        {
+            var candidates = EvaluateAllStateCandidates(targetState);
+            var eligible = candidates.Where(c => c.ConfidenceScore >= 35).OrderByDescending(c => c.ConfidenceScore).ToList();
+            if (eligible.Count > 0) return eligible;
+
+            var single = ResolveState(targetState);
+            return single != null ? new List<CandidateMatch> { single } : new List<CandidateMatch>();
+        }
+
         public CandidateMatch? ResolveState(string targetState = "United States")
+        {
+            var candidates = EvaluateAllStateCandidates(targetState);
+            var bestSelect = candidates.OrderByDescending(c => c.ConfidenceScore).FirstOrDefault();
+            if (bestSelect != null && bestSelect.ConfidenceScore >= 35)
+            {
+                return bestSelect;
+            }
+
+            // Input / Datalist state field fallback
+            try
+            {
+                var stateInputs = _driver.FindElements(By.XPath("//input[contains(@id,'state') or contains(@name,'state') or contains(@placeholder,'state') or @list]"));
+                var bestStateInput = stateInputs.FirstOrDefault(i => _inspector.IsVisible(i));
+                if (bestStateInput != null)
+                {
+                    var match = new CandidateMatch(bestStateInput, 40, "Input/Datalist-Based State Resolver");
+                    match.ElementSummary = _inspector.GetElementSummary(bestStateInput);
+                    match.AddScore(40, "Identified text input/datalist serving as State selector");
+                    return match;
+                }
+            }
+            catch { }
+
+            // Custom Dropdown fallback (e.g. Bootstrap/Select2/custom divs)
+            var customDropdown = ResolveCustomDropdown(targetState);
+            return customDropdown;
+        }
+
+        private List<CandidateMatch> EvaluateAllStateCandidates(string targetState = "United States")
         {
             var candidates = new List<CandidateMatch>();
 
@@ -540,30 +616,7 @@ namespace ResilientFormAutomation.Locators
                 candidates.Add(candidate);
             }
 
-            var bestSelect = candidates.OrderByDescending(c => c.ConfidenceScore).FirstOrDefault();
-            if (bestSelect != null && bestSelect.ConfidenceScore >= 35)
-            {
-                return bestSelect;
-            }
-
-            // Input / Datalist state field fallback
-            try
-            {
-                var stateInputs = _driver.FindElements(By.XPath("//input[contains(@id,'state') or contains(@name,'state') or contains(@placeholder,'state') or @list]"));
-                var bestStateInput = stateInputs.FirstOrDefault(i => _inspector.IsVisible(i));
-                if (bestStateInput != null)
-                {
-                    var match = new CandidateMatch(bestStateInput, 40, "Input/Datalist-Based State Resolver");
-                    match.ElementSummary = _inspector.GetElementSummary(bestStateInput);
-                    match.AddScore(40, "Identified text input/datalist serving as State selector");
-                    return match;
-                }
-            }
-            catch { }
-
-            // Custom Dropdown fallback (e.g. Bootstrap/Select2/custom divs)
-            var customDropdown = ResolveCustomDropdown(targetState);
-            return customDropdown;
+            return candidates;
         }
 
         private CandidateMatch? ResolveCustomDropdown(string targetState)
