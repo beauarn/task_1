@@ -6,8 +6,8 @@
 [![Mutation Suite](https://img.shields.io/badge/Mutation%20Suite-8%2F8%20(100%25%20PASS)-brightgreen.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)]()
 
-> **Submission for Internship Application — Task 1: Change-Tolerant Test Automation**  
-> **Candidate:** Kartik  
+> **Task 1: Change-Tolerant Test Automation**  
+> **Author:** Kartik  
 > **Target Application:** [CloudQA Automation Practice Form](https://app.cloudqa.io/home/AutomationPracticeForm)  
 
 ---
@@ -32,9 +32,9 @@ The automation continues to function without breaking when:
 
 ---
 
-## 🌟 Key Features to Showcase to Evaluators
+## 🌟 Key Architectural Features
 
-When presenting or demonstrating this project, highlight these **5 flagship capabilities**:
+The framework is built around **5 core flagship capabilities**:
 
 1. **Multi-Factor Semantic Scoring Engine (`SmartFieldResolver`)**
    - Eliminates fragile XPaths and CSS selectors.
@@ -50,7 +50,7 @@ When presenting or demonstrating this project, highlight these **5 flagship capa
    - Built-in `WebDriverFactory` supporting **Google Chrome**, **Brave Browser**, **Microsoft Edge**, and **Mozilla Firefox**.
    - Includes automatic browser detection, binary auto-discovery, and `--page-load-strategy=eager` to prevent timeouts on third-party CDNs.
 5. **Interactive Visual Inspection & Audit Trails**
-   - By default in interactive mode (`dotnet run`), the browser remains open so evaluators can visually verify every filled form.
+   - By default in interactive mode (`dotnet run`), the browser remains open for visual verification of every filled form.
    - Captures timestamped, full-page screenshot audit trails in the `Screenshots/` directory.
 
 ---
@@ -308,7 +308,7 @@ D:\task 1\
 
 ## 🛡️ Clean Code & Codebase Standards
 
-- **0 Comments in Code**: The C# codebase adheres to clean, self-documenting code principles with **zero inline comments (`//`, `/* */`)**, as strictly required.
+- **0 Comments in Code**: The C# codebase adheres to clean, self-documenting code principles with **zero inline comments (`//`, `/* */`)** across the implementation.
 - **Defensive Error Handling**: All recursive traversals, DOM piercings, and frame switches are protected with graceful fallbacks and contextual recovery.
 - **Fast Execution**: Employs `PageLoadStrategy.Eager` so tests execute smoothly without stalling on slow external analytics or third-party CDNs.
 - **Audit Trails**: Full test summary reports and high-resolution screenshot captures are generated for every test run in the `Screenshots/` directory.
