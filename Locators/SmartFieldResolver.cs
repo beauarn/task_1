@@ -15,7 +15,8 @@ namespace ResilientFormAutomation.Locators
         // Semantic synonym dictionaries
         private static readonly string[] FirstNamePositiveKeywords = {
             "first name", "firstname", "first_name", "first-name",
-            "fname", "given name", "givenname", "given-name", "forename", "first"
+            "fname", "f_name", "first_nm", "first", "given name", "givenname", "given-name",
+            "forename", "prenom", "vorname", "nombre"
         };
 
         private static readonly string[] FirstNameNegativeKeywords = {
@@ -25,7 +26,7 @@ namespace ResilientFormAutomation.Locators
         };
 
         private static readonly string[] GenericNameKeywords = {
-            "name", "your name", "full name", "fullname", "candidate name", "person name"
+            "name", "your name", "full name", "fullname", "candidate name", "person name", "contact name", "applicant name"
         };
 
         private static readonly string[] CompetingNameKeywords = {
@@ -37,7 +38,12 @@ namespace ResilientFormAutomation.Locators
         };
 
         private static readonly string[] StateKeywords = {
-            "state", "province", "region"
+            "state", "province", "region", "territory"
+        };
+
+        private static readonly HashSet<string> ExcludedInputTypes = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "hidden", "submit", "button", "reset", "image", "file", "checkbox", "radio", "password", "range", "color"
         };
 
         public SmartFieldResolver(IWebDriver driver, DomInspector inspector)
@@ -103,7 +109,9 @@ namespace ResilientFormAutomation.Locators
             if (inputs.Count == 0) return candidates;
 
             // 2. Gather all label elements on the page (pre-cache metadata for optimal performance)
-            var rawLabels = _driver.FindElements(By.TagName("label")).ToList();
+            var rawLabels = _driver.FindElements(By.XPath(
+                "//label | //*[contains(@class,'label') or contains(@class,'title') or contains(@class,'legend') or contains(@class,'field-name') or @role='label'] | //dt | //b | //strong"
+            )).ToList();
             var labelData = rawLabels.Select(l =>
             {
                 try
@@ -122,7 +130,7 @@ namespace ResilientFormAutomation.Locators
                 {
                     return null;
                 }
-            }).Where(l => l != null).Select(l => l!).ToList();
+            }).Where(l => l != null && !string.IsNullOrWhiteSpace(l.Text)).Select(l => l!).ToList();
 
             foreach (var input in inputs)
             {
@@ -133,8 +141,10 @@ namespace ResilientFormAutomation.Locators
                 string name = (input.GetAttribute("name") ?? "").ToLowerInvariant();
                 string placeholder = (input.GetAttribute("placeholder") ?? "").ToLowerInvariant();
                 string ariaLabel = (input.GetAttribute("aria-label") ?? "").ToLowerInvariant();
+                string ariaLabelledBy = (input.GetAttribute("aria-labelledby") ?? "").Trim();
                 string autocomplete = (input.GetAttribute("autocomplete") ?? "").ToLowerInvariant();
                 string title = (input.GetAttribute("title") ?? "").ToLowerInvariant();
+                string dataTestId = (input.GetAttribute("data-testid") ?? input.GetAttribute("data-qa") ?? input.GetAttribute("data-field") ?? input.GetAttribute("data-automation") ?? "").ToLowerInvariant();
 
                 bool isVisible = _inspector.IsVisible(input);
                 if (!isVisible)
@@ -150,7 +160,7 @@ namespace ResilientFormAutomation.Locators
                 bool hasNegativeKeyword = false;
                 foreach (var neg in FirstNameNegativeKeywords)
                 {
-                    if (id.Contains(neg) || name.Contains(neg) || placeholder.Contains(neg) || ariaLabel.Contains(neg))
+                    if (id.Contains(neg) || name.Contains(neg) || placeholder.Contains(neg) || ariaLabel.Contains(neg) || dataTestId.Contains(neg))
                     {
                         candidate.Penalize(120, $"Direct attribute contains conflicting keyword '{neg}'");
                         hasNegativeKeyword = true;
@@ -177,6 +187,24 @@ namespace ResilientFormAutomation.Locators
                     {
                         candidate.AddScore(35, $"aria-label matches '{pos}'");
                     }
+                    if (dataTestId.Contains(pos))
+                    {
+                        candidate.AddScore(35, $"data-testid/qa matches '{pos}'");
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(ariaLabelledBy))
+                {
+                    try
+                    {
+                        var labelledByElem = _driver.FindElement(By.Id(ariaLabelledBy));
+                        string lblText = (labelledByElem.Text ?? "").ToLowerInvariant();
+                        if (FirstNamePositiveKeywords.Any(k => lblText.Contains(k)))
+                        {
+                            candidate.AddScore(50, $"aria-labelledby='{ariaLabelledBy}' targets First Name label '{labelledByElem.Text}'");
+                        }
+                    }
+                    catch { }
                 }
 
                 if (autocomplete == "given-name")
@@ -353,9 +381,14 @@ namespace ResilientFormAutomation.Locators
                 }
 
                 // Value matching
-                if (targetWordRegex.IsMatch(val))
+                bool isMaleValMatch = normalizedTarget.Equals("Male", StringComparison.OrdinalIgnoreCase) && 
+                                      (valLower == "m" || valLower == "male" || valLower == "1" || valLower == "man");
+                bool isFemaleValMatch = normalizedTarget.Equals("Female", StringComparison.OrdinalIgnoreCase) && 
+                                        (valLower == "f" || valLower == "female" || valLower == "2" || valLower == "woman");
+
+                if (targetWordRegex.IsMatch(val) || isMaleValMatch || isFemaleValMatch)
                 {
-                    candidate.AddScore(50, $"Radio value='{val}' strictly matches target option '{normalizedTarget}'");
+                    candidate.AddScore(50, $"Radio value='{val}' matches target option '{normalizedTarget}'");
                 }
                 else if (!string.IsNullOrEmpty(val) && !valLower.Equals(normalizedTarget.ToLowerInvariant()))
                 {
@@ -364,9 +397,11 @@ namespace ResilientFormAutomation.Locators
                 }
 
                 // ID matching
-                if (targetWordRegex.IsMatch(id))
+                bool idIsMaleMatch = normalizedTarget.Equals("Male", StringComparison.OrdinalIgnoreCase) && 
+                                     (id == "m" || id == "male" || (id.Contains("male") && !id.Contains("female")));
+                if (targetWordRegex.IsMatch(id) || idIsMaleMatch)
                 {
-                    candidate.AddScore(40, $"Radio id='{id}' strictly matches target option '{normalizedTarget}'");
+                    candidate.AddScore(40, $"Radio id='{id}' matches target option '{normalizedTarget}'");
                 }
                 else if (id.Contains("female") && normalizedTarget.Equals("Male", StringComparison.OrdinalIgnoreCase))
                 {
@@ -480,8 +515,20 @@ namespace ResilientFormAutomation.Locators
                 {
                     var options = select.FindElements(By.TagName("option"));
                     bool containsTarget = options.Any(o =>
-                        (o.Text ?? "").Trim().Equals(targetState, StringComparison.OrdinalIgnoreCase) ||
-                        (o.GetAttribute("value") ?? "").Trim().Equals(targetState, StringComparison.OrdinalIgnoreCase));
+                    {
+                        string optText = (o.Text ?? "").Trim();
+                        string optVal = (o.GetAttribute("value") ?? "").Trim();
+                        if (optText.Equals(targetState, StringComparison.OrdinalIgnoreCase) || optVal.Equals(targetState, StringComparison.OrdinalIgnoreCase)) return true;
+                        if (targetState.Equals("United States", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return optText.Equals("US", StringComparison.OrdinalIgnoreCase) ||
+                                   optText.Equals("USA", StringComparison.OrdinalIgnoreCase) ||
+                                   optText.Contains("United States", StringComparison.OrdinalIgnoreCase) ||
+                                   optVal.Equals("US", StringComparison.OrdinalIgnoreCase) ||
+                                   optVal.Equals("USA", StringComparison.OrdinalIgnoreCase);
+                        }
+                        return optText.Contains(targetState, StringComparison.OrdinalIgnoreCase);
+                    });
 
                     if (containsTarget)
                     {
@@ -498,6 +545,21 @@ namespace ResilientFormAutomation.Locators
             {
                 return bestSelect;
             }
+
+            // Input / Datalist state field fallback
+            try
+            {
+                var stateInputs = _driver.FindElements(By.XPath("//input[contains(@id,'state') or contains(@name,'state') or contains(@placeholder,'state') or @list]"));
+                var bestStateInput = stateInputs.FirstOrDefault(i => _inspector.IsVisible(i));
+                if (bestStateInput != null)
+                {
+                    var match = new CandidateMatch(bestStateInput, 40, "Input/Datalist-Based State Resolver");
+                    match.ElementSummary = _inspector.GetElementSummary(bestStateInput);
+                    match.AddScore(40, "Identified text input/datalist serving as State selector");
+                    return match;
+                }
+            }
+            catch { }
 
             // Custom Dropdown fallback (e.g. Bootstrap/Select2/custom divs)
             var customDropdown = ResolveCustomDropdown(targetState);
@@ -537,15 +599,16 @@ namespace ResilientFormAutomation.Locators
 
         private List<IWebElement> FindAllPotentialTextInputs()
         {
-            var rawInputs = _driver.FindElements(By.TagName("input"));
             var textInputs = new List<IWebElement>();
 
+            // 1. Gather all non-excluded input elements
+            var rawInputs = _driver.FindElements(By.TagName("input"));
             foreach (var input in rawInputs)
             {
                 try
                 {
-                    string type = (input.GetAttribute("type") ?? "text").ToLowerInvariant();
-                    if (type == "text" || type == "search" || type == "" || type == "tel")
+                    string type = (input.GetAttribute("type") ?? "text").ToLowerInvariant().Trim();
+                    if (!ExcludedInputTypes.Contains(type))
                     {
                         textInputs.Add(input);
                     }
@@ -555,6 +618,17 @@ namespace ResilientFormAutomation.Locators
                     // Stale or detached element
                 }
             }
+
+            // 2. Gather textareas as fallback text inputs
+            try
+            {
+                var rawTextareas = _driver.FindElements(By.TagName("textarea"));
+                foreach (var ta in rawTextareas)
+                {
+                    textInputs.Add(ta);
+                }
+            }
+            catch { }
 
             return textInputs;
         }
@@ -602,14 +676,32 @@ namespace ResilientFormAutomation.Locators
                     }
                 }
 
-                // 2. Following siblings (e.g. <input ...><span ...>Male</span>)
-                var followingSiblings = radio.FindElements(By.XPath("following-sibling::*[self::span or self::label][position() <= 2]"));
+                // 2. Preceding siblings (e.g. <span>Male</span> <input ...>)
+                var precedingSiblings = radio.FindElements(By.XPath("preceding-sibling::*[self::span or self::label or self::b][position() <= 2]"));
+                foreach (var sib in precedingSiblings)
+                {
+                    results.Add((sib, sib.Text));
+                }
+
+                // 3. Following siblings (e.g. <input ...><span ...>Male</span>)
+                var followingSiblings = radio.FindElements(By.XPath("following-sibling::*[self::span or self::label or self::b][position() <= 2]"));
                 foreach (var sib in followingSiblings)
                 {
                     results.Add((sib, sib.Text));
                 }
 
-                // 3. Parent text (e.g. <label><input ...> Male</label>)
+                // 4. Preceding table cell (e.g. <td>Male</td><td><input type="radio"></td>)
+                try
+                {
+                    var tdSiblings = radio.FindElements(By.XPath("ancestor::td[1]/preceding-sibling::td[1]"));
+                    foreach (var td in tdSiblings)
+                    {
+                        results.Add((td, td.Text));
+                    }
+                }
+                catch { }
+
+                // 5. Parent text (e.g. <label><input ...> Male</label>)
                 var parent = radio.FindElement(By.XPath(".."));
                 string parentText = parent.Text;
                 if (!string.IsNullOrEmpty(parentText))

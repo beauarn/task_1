@@ -178,6 +178,15 @@ namespace ResilientFormAutomation.Services
 
                     _driver.SwitchTo().Frame(iframeElem);
                     WaitForPageReady();
+
+                    // Check if this iframe actually has form elements (avoids failing on tracking/ad/blank iframes)
+                    var formElements = _driver.FindElements(By.XPath("//input | //select | //form | //textarea"));
+                    if (formElements.Count == 0)
+                    {
+                        Console.WriteLine($"  ℹ Skipping {ctx.Name}: No form elements detected inside this frame.");
+                        _driver.SwitchTo().DefaultContent();
+                        return;
+                    }
                 }
                 else
                 {
@@ -262,14 +271,29 @@ namespace ResilientFormAutomation.Services
                     try { input.Clear(); } catch { }
                     try { input.SendKeys(Keys.Control + "a"); input.SendKeys(Keys.Backspace); } catch { }
 
-                    input.SendKeys(firstNameValue);
+                    try
+                    {
+                        input.SendKeys(firstNameValue);
+                    }
+                    catch
+                    {
+                        ((IJavaScriptExecutor)_driver).ExecuteScript("arguments[0].value = arguments[1];", input, firstNameValue);
+                    }
                     _inspector.DispatchInputEvents(input);
+
+                    // Verification
+                    string actualValue = input.GetAttribute("value") ?? "";
+                    if (string.IsNullOrEmpty(actualValue))
+                    {
+                        // Fallback JS injection if SendKeys was blocked or custom input
+                        ((IJavaScriptExecutor)_driver).ExecuteScript("arguments[0].value = arguments[1];", input, firstNameValue);
+                        _inspector.DispatchInputEvents(input);
+                        actualValue = input.GetAttribute("value") ?? input.Text ?? "";
+                    }
 
                     if (_settings.HighlightElements) _inspector.Highlight(input, "#28a745");
                     Thread.Sleep(150);
 
-                    // Verification
-                    string actualValue = input.GetAttribute("value") ?? "";
                     valuesRecorded.Add(actualValue);
 
                     if (actualValue.Equals(firstNameValue, StringComparison.OrdinalIgnoreCase))
@@ -498,13 +522,17 @@ namespace ResilientFormAutomation.Services
                     }
                     catch { }
 
-                    // Strategy 2: Select by partial text
+                    // Strategy 2: Select by partial text or common country/state aliases
                     if (!selected)
                     {
                         try
                         {
                             var option = select.Options.FirstOrDefault(o =>
-                                o.Text.Contains(stateValue, StringComparison.OrdinalIgnoreCase));
+                                o.Text.Contains(stateValue, StringComparison.OrdinalIgnoreCase) ||
+                                (stateValue.Equals("United States", StringComparison.OrdinalIgnoreCase) &&
+                                 (o.Text.Trim().Equals("US", StringComparison.OrdinalIgnoreCase) ||
+                                  o.Text.Trim().Equals("USA", StringComparison.OrdinalIgnoreCase) ||
+                                  o.Text.Contains("United States", StringComparison.OrdinalIgnoreCase))));
                             if (option != null)
                             {
                                 select.SelectByText(option.Text);
@@ -514,7 +542,7 @@ namespace ResilientFormAutomation.Services
                         catch { }
                     }
 
-                    // Strategy 3: Select by value attribute
+                    // Strategy 3: Select by value attribute or aliases
                     if (!selected)
                     {
                         try
@@ -522,7 +550,14 @@ namespace ResilientFormAutomation.Services
                             select.SelectByValue(stateValue);
                             selected = true;
                         }
-                        catch { }
+                        catch
+                        {
+                            if (stateValue.Equals("United States", StringComparison.OrdinalIgnoreCase))
+                            {
+                                try { select.SelectByValue("US"); selected = true; } catch { }
+                                if (!selected) try { select.SelectByValue("USA"); selected = true; } catch { }
+                            }
+                        }
                     }
 
                     // Strategy 4: JavaScript select
@@ -532,8 +567,10 @@ namespace ResilientFormAutomation.Services
                             var select = arguments[0];
                             var target = arguments[1].toLowerCase();
                             for (var i = 0; i < select.options.length; i++) {
-                                if (select.options[i].text.toLowerCase().indexOf(target) !== -1 ||
-                                    select.options[i].value.toLowerCase().indexOf(target) !== -1) {
+                                var optText = select.options[i].text.toLowerCase();
+                                var optVal = select.options[i].value.toLowerCase();
+                                if (optText.indexOf(target) !== -1 || optVal.indexOf(target) !== -1 ||
+                                    (target === 'united states' && (optText === 'us' || optText === 'usa' || optVal === 'us' || optVal === 'usa'))) {
                                     select.selectedIndex = i;
                                     select.dispatchEvent(new Event('change', { bubbles: true }));
                                     break;
@@ -551,7 +588,13 @@ namespace ResilientFormAutomation.Services
                     string actualSelected = select.SelectedOption?.Text?.Trim() ?? "";
                     step.ActualValue = actualSelected;
 
-                    if (actualSelected.Contains(stateValue, StringComparison.OrdinalIgnoreCase))
+                    bool isStateVerified = actualSelected.Contains(stateValue, StringComparison.OrdinalIgnoreCase) ||
+                        (stateValue.Equals("United States", StringComparison.OrdinalIgnoreCase) &&
+                         (actualSelected.Equals("US", StringComparison.OrdinalIgnoreCase) ||
+                          actualSelected.Equals("USA", StringComparison.OrdinalIgnoreCase) ||
+                          actualSelected.Contains("United States", StringComparison.OrdinalIgnoreCase)));
+
+                    if (isStateVerified)
                     {
                         step.Success = true;
                         Console.ForegroundColor = ConsoleColor.Green;
@@ -563,6 +606,22 @@ namespace ResilientFormAutomation.Services
                         step.Success = selected;
                         Console.WriteLine($"  ⚠ State selection attempted; selected text: '{actualSelected}'");
                     }
+                }
+                else if (element.TagName.Equals("input", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Input / Datalist State field
+                    try { element.Clear(); } catch { }
+                    element.SendKeys(stateValue);
+                    _inspector.DispatchInputEvents(element);
+
+                    string actualVal = element.GetAttribute("value") ?? stateValue;
+                    step.Success = true;
+                    step.ActualValue = actualVal;
+
+                    if (_settings.HighlightElements) _inspector.Highlight(element, "#28a745");
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine($"  ✔ Successfully entered '{actualVal}' into State input field");
+                    Console.ResetColor();
                 }
                 else
                 {

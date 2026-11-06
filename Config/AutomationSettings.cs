@@ -15,5 +15,6 @@ namespace ResilientFormAutomation.Config
         public string ScreenshotDirectory { get; set; } = "Screenshots";
         public bool RunMutationTests { get; set; } = false;
         public string TargetFrame { get; set; } = "all";
+        public bool KeepBrowserOpen { get; set; } = true;
     }
 }

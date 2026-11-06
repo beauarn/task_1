@@ -40,6 +40,7 @@ namespace ResilientFormAutomation
             Console.WriteLine($"  • State        : {settings.State}");
             Console.WriteLine($"  • Target Frame : {settings.TargetFrame} (all | main | no-id | <id>)");
             Console.WriteLine($"  • Headless     : {settings.Headless}");
+            Console.WriteLine($"  • Keep Open    : {settings.KeepBrowserOpen} (Press ENTER to close)");
             Console.WriteLine($"  • Screenshots  : {settings.TakeScreenshots} ({settings.ScreenshotDirectory})");
             Console.WriteLine($"  • Run Mutants  : {settings.RunMutationTests}");
             Console.ResetColor();
@@ -68,6 +69,27 @@ namespace ResilientFormAutomation
                 using var driver = new ChromeDriver(options);
                 var service = new FormInteractionService(driver, settings);
                 var report = service.ExecuteFullTest();
+
+                if (!settings.Headless && settings.KeepBrowserOpen)
+                {
+                    Console.ForegroundColor = ConsoleColor.Cyan;
+                    Console.WriteLine();
+                    Console.WriteLine("===============================================================================");
+                    Console.WriteLine("👀 BROWSER KEPT OPEN FOR INSPECTION");
+                    Console.WriteLine("   Chrome is left open so you can view all filled fields and selections.");
+                    Console.WriteLine("   Press [ENTER] in this terminal when you want to close the browser and exit...");
+                    Console.WriteLine("===============================================================================");
+                    Console.ResetColor();
+
+                    try
+                    {
+                        if (!Console.IsInputRedirected)
+                        {
+                            Console.ReadLine();
+                        }
+                    }
+                    catch { }
+                }
 
                 return report.OverallSuccess ? 0 : 1;
             }
@@ -148,13 +170,27 @@ namespace ResilientFormAutomation
                 {
                     settings.RunMutationTests = true;
                 }
+                else if (arg.Equals("--keep-open", StringComparison.OrdinalIgnoreCase) ||
+                         arg.Equals("--no-close", StringComparison.OrdinalIgnoreCase))
+                {
+                    settings.KeepBrowserOpen = true;
+                }
+                else if (arg.Equals("--auto-close", StringComparison.OrdinalIgnoreCase) ||
+                         arg.Equals("--close", StringComparison.OrdinalIgnoreCase))
+                {
+                    settings.KeepBrowserOpen = false;
+                }
                 else if (!arg.StartsWith("-") && (arg.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
                                                   arg.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
                                                   arg.StartsWith("file://", StringComparison.OrdinalIgnoreCase) ||
-                                                  arg.EndsWith(".html", StringComparison.OrdinalIgnoreCase)))
+                                                  arg.EndsWith(".html", StringComparison.OrdinalIgnoreCase) ||
+                                                  arg.Contains(".")))
                 {
-                    // Positional URL argument
-                    settings.TargetUrl = arg;
+                    // Positional URL argument (supports domain names without http/https)
+                    settings.TargetUrl = arg.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                                         arg.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
+                                         arg.StartsWith("file://", StringComparison.OrdinalIgnoreCase)
+                                         ? arg : "https://" + arg;
                 }
             }
 
