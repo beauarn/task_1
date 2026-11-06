@@ -42,6 +42,8 @@ namespace ResilientFormAutomation.Services
                 ("Scenario 3: Table Layout (No form-groups or explicit labels)", Path.Combine(scenariosDir, "scenario3_table_layout.html")),
                 ("Scenario 4: High Disambiguation (Middle/Last/User name, Country/City dropdowns)", Path.Combine(scenariosDir, "scenario4_similar_fields.html")),
                 ("Scenario 5: Generic 'Name' Label (Instead of 'First Name')", Path.Combine(scenariosDir, "scenario5_generic_name_label.html")),
+                ("Scenario 6: Linear Horizontal Line Layout (Single-Line Flex/Inline)", Path.Combine(scenariosDir, "scenario6_linear_inline_layout.html")),
+                ("Scenario 7: Form Inside IFrame Without ID (Embedded Frame Context)", Path.Combine(scenariosDir, "scenario7_embedded_iframe_no_id.html")),
             };
 
             var scenarioResults = new List<(string Name, AutomationReport Report)>();

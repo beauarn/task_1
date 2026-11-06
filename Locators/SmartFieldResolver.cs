@@ -241,7 +241,30 @@ namespace ResilientFormAutomation.Locators
             // Return top candidate with score >= 20
             var ranked = candidates.OrderByDescending(c => c.ConfidenceScore).ToList();
             var bestMatch = ranked.FirstOrDefault();
-            return bestMatch != null && bestMatch.ConfidenceScore >= 20 ? bestMatch : null;
+            if (bestMatch != null && bestMatch.ConfidenceScore >= 20)
+            {
+                return bestMatch;
+            }
+
+            // Fallback Cascade: If all semantic scores are low/zero (extreme anonymization/no labels)
+            // Select the first visible editable text box that does not conflict with competing tokens
+            var fallbackInput = inputs.FirstOrDefault(i =>
+            {
+                if (!_inspector.IsVisible(i)) return false;
+                string inputId = (i.GetAttribute("id") ?? "").ToLowerInvariant();
+                string inputName = (i.GetAttribute("name") ?? "").ToLowerInvariant();
+                return !CompetingNameKeywords.Any(k => inputId.Contains(k) || inputName.Contains(k));
+            });
+
+            if (fallbackInput != null)
+            {
+                var fallbackMatch = new CandidateMatch(fallbackInput, 15, "Positional / First-Editable Fallback Heuristic");
+                fallbackMatch.ElementSummary = _inspector.GetElementSummary(fallbackInput);
+                fallbackMatch.AddScore(15, "Selected as primary editable text input in form when all candidate scores were below threshold");
+                return fallbackMatch;
+            }
+
+            return null;
         }
 
         #endregion

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Scenario 6: Linear Horizontal & Single-Line Layout</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .linear-container { display: flex; flex-direction: row; align-items: center; gap: 15px; border: 1px solid #ccc; padding: 15px; background: #fdfdfd; }
+        .linear-field { display: inline-flex; align-items: center; gap: 5px; }
+        input[type="text"] { width: 140px; padding: 5px; }
+        select { padding: 5px; }
+    </style>
+</head>
+<body>
+    <h2>Single Horizontal Linear Line Layout</h2>
+    <p>All fields and labels rendered on a single continuous horizontal row without form-groups or tables:</p>
+    
+    <div class="linear-container">
+        <!-- Linear Field 1: First Name -->
+        <span class="linear-field">
+            <label for="lin_fn">First Name:</label>
+            <input type="text" id="lin_fn" name="lin_fn">
+        </span>
+
+        <!-- Linear Field 2: Last Name (distractor on same line) -->
+        <span class="linear-field">
+            <label for="lin_ln">Last Name:</label>
+            <input type="text" id="lin_ln" name="lin_ln">
+        </span>
+
+        <!-- Linear Field 3: Gender -->
+        <span class="linear-field">
+            <label>Gender:</label>
+            <input type="radio" id="lin_m" name="lin_sex" value="Male"> <label for="lin_m">Male</label>
+            <input type="radio" id="lin_f" name="lin_sex" value="Female"> <label for="lin_f">Female</label>
+        </span>
+
+        <!-- Linear Field 4: State -->
+        <span class="linear-field">
+            <label for="lin_st">State:</label>
+            <select id="lin_st" name="lin_st">
+                <option value="">Select</option>
+                <option value="United States">United States</option>
+                <option value="Canada">Canada</option>
+            </select>
+        </span>
+    </div>
+</body>
+</html>

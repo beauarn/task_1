@@ -474,27 +474,27 @@ namespace ResilientFormAutomation.Services
                 return match;
             }
 
-            // 2. Iframes fallback traversal
+            // 2. Iframes fallback traversal (handles iframes WITH or WITHOUT ID)
+            _driver.SwitchTo().DefaultContent();
             var iframes = _driver.FindElements(By.TagName("iframe")).ToList();
-            foreach (var frame in iframes)
+            for (int i = 0; i < iframes.Count; i++)
             {
                 try
                 {
-                    _driver.SwitchTo().Frame(frame);
+                    // Switch to iframe by element reference (works regardless of whether iframe has an id, name, or neither!)
+                    _driver.SwitchTo().Frame(iframes[i]);
                     var frameMatch = resolveFunc();
                     if (frameMatch != null && frameMatch.ConfidenceScore >= 30)
                     {
-                        frameMatch.AddScore(10, "Found inside embedded <iframe>");
+                        frameMatch.AddScore(25, $"Found inside embedded <iframe> index #{i}");
+                        // Keep driver focused inside this frame context so interaction succeeds!
                         return frameMatch;
                     }
+                    _driver.SwitchTo().DefaultContent();
                 }
                 catch
                 {
-                    // Continue to next frame
-                }
-                finally
-                {
-                    _driver.SwitchTo().DefaultContent();
+                    try { _driver.SwitchTo().DefaultContent(); } catch { }
                 }
             }
 
