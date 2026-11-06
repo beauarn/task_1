@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Scenario 5: Generic "Name" Label Instead of "First Name"</title>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+</head>
+<body>
+<div class="container" style="margin-top: 30px;">
+    <h2>Form with generic "Name" label instead of "First Name"</h2>
+    <form class="well">
+        <div class="row">
+            <!-- TARGET: Generic "Name" label -->
+            <div class="form-group col-xs-6">
+                <label for="cust_nm" class="control-label">Name</label>
+                <input id="cust_nm" name="name" type="text" class="form-control" placeholder="Enter name">
+            </div>
+
+            <!-- Competing Surname -->
+            <div class="form-group col-xs-6">
+                <label for="cust_sn" class="control-label">Surname</label>
+                <input id="cust_sn" name="surname" type="text" class="form-control" placeholder="Surname">
+            </div>
+
+            <!-- Gender -->
+            <div class="form-group col-xs-6">
+                <label class="control-label">Gender</label>
+                <div>
+                    <label class="radio-inline"><input type="radio" name="sex" value="Male"> Male</label>
+                    <label class="radio-inline"><input type="radio" name="sex" value="Female"> Female</label>
+                </div>
+            </div>
+
+            <!-- State -->
+            <div class="form-group col-xs-6">
+                <label for="st_sel" class="control-label">State</label>
+                <select id="st_sel" name="state" class="form-control">
+                    <option>Select Region</option>
+                    <option value="United States">United States</option>
+                    <option value="UK">United Kingdom</option>
+                </select>
+            </div>
+        </div>
+    </form>
+</div>
+</body>
+</html>

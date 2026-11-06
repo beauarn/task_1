@@ -41,6 +41,7 @@ namespace ResilientFormAutomation.Services
                 ("Scenario 2: Dynamic GUIDs & Obfuscated Classes (No standard IDs)", Path.Combine(scenariosDir, "scenario2_renamed_attributes.html")),
                 ("Scenario 3: Table Layout (No form-groups or explicit labels)", Path.Combine(scenariosDir, "scenario3_table_layout.html")),
                 ("Scenario 4: High Disambiguation (Middle/Last/User name, Country/City dropdowns)", Path.Combine(scenariosDir, "scenario4_similar_fields.html")),
+                ("Scenario 5: Generic 'Name' Label (Instead of 'First Name')", Path.Combine(scenariosDir, "scenario5_generic_name_label.html")),
             };
 
             var scenarioResults = new List<(string Name, AutomationReport Report)>();

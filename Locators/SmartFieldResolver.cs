@@ -24,8 +24,12 @@ namespace ResilientFormAutomation.Locators
             "city", "state", "zip", "dob", "birth", "country", "mobile", "password"
         };
 
+        private static readonly string[] GenericNameKeywords = {
+            "name", "your name", "full name", "fullname", "candidate name", "person name"
+        };
+
         private static readonly string[] CompetingNameKeywords = {
-            "last", "surname", "family", "lname", "user", "username", "middle"
+            "last", "surname", "family", "lname", "user", "username", "middle", "company", "father", "mother"
         };
 
         private static readonly string[] GenderKeywords = {
@@ -135,9 +139,20 @@ namespace ResilientFormAutomation.Locators
                 }
 
                 // Generic 'Name' placeholder when not conflicting with last name
-                if (!hasNegativeKeyword && (placeholder.Equals("name", StringComparison.OrdinalIgnoreCase) || placeholder.Contains("enter name")))
+                if (!hasNegativeKeyword)
                 {
-                    candidate.AddScore(15, "placeholder contains generic 'Name'");
+                    if (placeholder.Equals("name", StringComparison.OrdinalIgnoreCase) || placeholder.Contains("enter name"))
+                    {
+                        candidate.AddScore(15, "placeholder contains generic 'Name'");
+                    }
+                    if (id.Equals("name", StringComparison.OrdinalIgnoreCase) || id.Equals("your_name", StringComparison.OrdinalIgnoreCase))
+                    {
+                        candidate.AddScore(25, "id attribute matches generic 'name'");
+                    }
+                    if (name.Equals("name", StringComparison.OrdinalIgnoreCase) || name.Equals("your_name", StringComparison.OrdinalIgnoreCase))
+                    {
+                        candidate.AddScore(25, "name attribute matches generic 'name'");
+                    }
                 }
 
                 // Label-to-Input Association Heuristics
@@ -146,6 +161,8 @@ namespace ResilientFormAutomation.Locators
                     // Check if this label represents 'First Name'
                     bool isFirstNameLabel = FirstNamePositiveKeywords.Any(k => label.LowerText.Contains(k) || label.Name.Contains(k));
                     bool isCompetingNameLabel = CompetingNameKeywords.Any(k => label.LowerText.Contains(k) || label.Name.Contains(k));
+                    bool isGenericNameLabel = !isCompetingNameLabel &&
+                        GenericNameKeywords.Any(k => label.LowerText.Equals(k) || label.LowerText.StartsWith(k + ":") || label.LowerText.StartsWith(k + " *") || label.Name.Equals(k));
 
                     if (isFirstNameLabel)
                     {
@@ -187,6 +204,29 @@ namespace ResilientFormAutomation.Locators
                         if (AreInSameContainer(label.Element, input))
                         {
                             candidate.AddScore(45, $"Shares immediate field container with label '{label.Text}'");
+                        }
+                    }
+                    else if (isGenericNameLabel)
+                    {
+                        // Fallback when label is simply "Name" or "Your Name" (without "first")
+                        if (!string.IsNullOrEmpty(label.For) && !string.IsNullOrEmpty(id) && label.For.Equals(id, StringComparison.OrdinalIgnoreCase))
+                        {
+                            candidate.AddScore(45, $"Explicit <label for='{label.For}'> (generic name) matches element id='{id}'");
+                        }
+
+                        if (AreInSameContainer(label.Element, input))
+                        {
+                            candidate.AddScore(35, $"Shares immediate field container with generic name label '{label.Text}'");
+                        }
+
+                        if (isVisible)
+                        {
+                            double distance = _inspector.CalculateDistance(label.Element, input);
+                            if (distance < 180)
+                            {
+                                double proximityPoints = Math.Max(5, 20 - (distance / 9.0));
+                                candidate.AddScore(proximityPoints, $"High visual proximity to generic label '{label.Text}' (distance: {distance:F0}px)");
+                            }
                         }
                     }
                     else if (isCompetingNameLabel && AreInSameContainer(label.Element, input))
