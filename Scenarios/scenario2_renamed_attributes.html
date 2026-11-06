@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Scenario 2: Dynamic IDs & Obfuscated Class Names</title>
+    <style>
+        .custom-card { border: 1px solid #ddd; padding: 20px; border-radius: 8px; width: 600px; margin: 30px auto; font-family: sans-serif; }
+        .row-box { margin-bottom: 16px; }
+        .input-stylish { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        .select-stylish { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+    </style>
+</head>
+<body>
+<div class="custom-card">
+    <h2>Dynamic GUIDs & Tailwind/Custom Classes</h2>
+    <form>
+        <!-- First Name with GUID id and modern label -->
+        <div class="row-box">
+            <label for="f_guid_8283a" style="font-weight: bold; display: block; margin-bottom: 4px;">First Name</label>
+            <input type="text" id="f_guid_8283a" name="usr_first_name_binding" class="input-stylish" placeholder="Your first name">
+        </div>
+
+        <!-- Gender with dynamic attributes -->
+        <div class="row-box">
+            <label style="font-weight: bold; display: block; margin-bottom: 4px;">Gender</label>
+            <div>
+                <input type="radio" id="rad_gen_001" name="identity_gender" value="Male">
+                <span for="rad_gen_001">Male</span>
+                &nbsp;&nbsp;
+                <input type="radio" id="rad_gen_002" name="identity_gender" value="Female">
+                <span for="rad_gen_002">Female</span>
+            </div>
+        </div>
+
+        <!-- State with dynamic select ID and custom classes -->
+        <div class="row-box">
+            <label for="sel_dyn_4492" style="font-weight: bold; display: block; margin-bottom: 4px;">State</label>
+            <select id="sel_dyn_4492" name="region_province" class="select-stylish">
+                <option value="">Please select a state...</option>
+                <option value="Florida">Florida</option>
+                <option value="United States">United States</option>
+                <option value="Washington">Washington</option>
+            </select>
+        </div>
+    </form>
+</div>
+</body>
+</html>

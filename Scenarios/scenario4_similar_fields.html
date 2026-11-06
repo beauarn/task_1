@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Scenario 4: High Disambiguation Stress Test (Similar Fields)</title>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+</head>
+<body>
+<div class="container" style="margin-top: 20px;">
+    <h2>High Complexity Form with Similar Fields</h2>
+    <form class="well">
+        <div class="row">
+            <!-- Distractor 1: Full Name -->
+            <div class="form-group col-xs-4">
+                <label for="fullname">Full Name</label>
+                <input id="fullname" type="text" name="FullName" class="form-control" placeholder="Full name">
+            </div>
+
+            <!-- TARGET 1: First Name -->
+            <div class="form-group col-xs-4">
+                <label for="fn_target">First Name</label>
+                <input id="fn_target" type="text" name="First Name" class="form-control" placeholder="First Name">
+            </div>
+
+            <!-- Distractor 2: Middle Name -->
+            <div class="form-group col-xs-4">
+                <label for="midname">Middle Name</label>
+                <input id="midname" type="text" name="MiddleName" class="form-control" placeholder="Middle name">
+            </div>
+
+            <!-- Distractor 3: Last Name -->
+            <div class="form-group col-xs-4">
+                <label for="lastname">Last Name</label>
+                <input id="lastname" type="text" name="LastName" class="form-control" placeholder="Surname">
+            </div>
+
+            <!-- Distractor 4: Username -->
+            <div class="form-group col-xs-4">
+                <label for="uname">Username</label>
+                <input id="uname" type="text" name="Username" class="form-control" placeholder="Choose a username">
+            </div>
+        </div>
+
+        <hr>
+
+        <div class="row">
+            <!-- Distractor Radio Group: Marital Status -->
+            <div class="form-group col-xs-6">
+                <label>Marital Status</label>
+                <div>
+                    <input type="radio" name="marital" value="Single"> Single
+                    <input type="radio" name="marital" value="Married"> Married
+                </div>
+            </div>
+
+            <!-- TARGET 2: Gender -->
+            <div class="form-group col-xs-6">
+                <label>Gender</label>
+                <div>
+                    <input type="radio" id="g_male" name="gender" value="Male">
+                    <span for="g_male">Male</span>
+                    <input type="radio" id="g_female" name="gender" value="Female">
+                    <span for="g_female">Female</span>
+                </div>
+            </div>
+        </div>
+
+        <hr>
+
+        <div class="row">
+            <!-- Distractor Dropdown 1: Country -->
+            <div class="form-group col-xs-4">
+                <label for="c_select">Country</label>
+                <select id="c_select" name="country" class="form-control">
+                    <option>Select Country</option>
+                    <option value="US">United States</option>
+                    <option value="IN">India</option>
+                    <option value="CA">Canada</option>
+                </select>
+            </div>
+
+            <!-- TARGET 3: State -->
+            <div class="form-group col-xs-4">
+                <label for="s_select">State</label>
+                <select id="s_select" name="state" class="form-control">
+                    <option>Select State</option>
+                    <option value="New York">New York</option>
+                    <option value="United States">United States</option>
+                    <option value="Texas">Texas</option>
+                </select>
+            </div>
+
+            <!-- Distractor Dropdown 2: City -->
+            <div class="form-group col-xs-4">
+                <label for="city_select">City</label>
+                <select id="city_select" name="city" class="form-control">
+                    <option>Select City</option>
+                    <option value="Austin">Austin</option>
+                    <option value="New York City">New York City</option>
+                </select>
+            </div>
+        </div>
+    </form>
+</div>
+</body>
+</html>

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Scenario 1: Reordered Fields</title>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+</head>
+<body>
+<div class="container" style="margin-top: 30px;">
+    <h2>Modified Page: Inverted Order & Different Grid Classes</h2>
+    <form class="well">
+        <!-- 1. State Dropdown Moved to the Top -->
+        <div class="form-group col-md-12">
+            <label for="state_reordered" class="control-label">State</label>
+            <select class="form-control" id="state_reordered" name="state_reordered">
+                <option>-- Select State --</option>
+                <option value="California">California</option>
+                <option value="New York">New York</option>
+                <option value="United States">United States</option>
+                <option value="Texas">Texas</option>
+            </select>
+        </div>
+
+        <!-- 2. Gender in the Middle -->
+        <div class="form-group col-md-12">
+            <label class="control-label">Gender</label>
+            <div>
+                <label class="radio-inline">
+                    <input type="radio" name="gender_reordered" id="gender_m" value="Male"> Male
+                </label>
+                <label class="radio-inline">
+                    <input type="radio" name="gender_reordered" id="gender_f" value="Female"> Female
+                </label>
+            </div>
+        </div>
+
+        <!-- 3. First Name Moved to the Bottom -->
+        <div class="form-group col-md-12">
+            <label for="fname_reordered" class="control-label">First Name</label>
+            <input type="text" class="form-control" id="fname_reordered" name="fname_reordered" placeholder="Given Name">
+        </div>
+
+        <button type="button" class="btn btn-success">Submit</button>
+    </form>
+</div>
+</body>
+</html>

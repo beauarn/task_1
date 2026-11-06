@@ -1,0 +1,8 @@
+bin/
+obj/
+*.user
+*.suo
+.vs/
+Screenshots/*.png
+!Screenshots/.gitkeep
+page_sample.html
