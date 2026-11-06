@@ -103,6 +103,7 @@ To prove that the solution fulfills requirement #3 ("keeps working when page cha
 | **Scenario 5: Generic 'Name' Label** | Form uses `<label>Name</label>` instead of 'First Name' | **PASS** (135 pts) | **PASS** (170 pts) | **PASS** (200 pts) | **PASS ✅** |
 | **Scenario 6: Linear Horizontal Line** | All fields on a single continuous horizontal row | **PASS** (130 pts) | **PASS** (140 pts) | **PASS** (155 pts) | **PASS ✅** |
 | **Scenario 7: IFrame Without ID** | Form hosted inside `<iframe>` with NO ID and NO Name | **PASS** (245 pts) | **PASS** (170 pts) | **PASS** (245 pts) | **PASS ✅** |
+| **Scenario 8: Inputs on Left, Missing Input & Multiple First Names** | Inputs before labels, missing email input, multiple First Name fields | **PASS** (155 pts) | **PASS** (105 pts) | **PASS** (245 pts) | **PASS ✅** |
 
 ---
 
@@ -131,12 +132,25 @@ Or with named parameters:
 dotnet run --url="https://your-custom-or-modified-page.com/form" --headless
 ```
 
-### 3. Customize Values to Fill & Select
+### 3. Target Specific Frames (or All Contexts)
+The CloudQA page contains forms in the main document, inside an IFrame without ID, and inside a named IFrame. You can choose which context to automate:
 ```bash
-dotnet run --first-name="John" --gender="Male" --state="United States"
+# Automate ALL form contexts sequentially (default)
+dotnet run -- --frame=all
+
+# Automate specifically the IFrame without ID
+dotnet run -- --frame=no-id
+
+# Automate only the main document (skip iframes)
+dotnet run -- --frame=main
 ```
 
-### 4. Run the Mutation Test Matrix
+### 4. Customize Values to Fill & Select
+```bash
+dotnet run --first-name="Kartik" --gender="Male" --state="United States"
+```
+
+### 5. Run the Mutation Test Matrix
 ```bash
 dotnet run -- --test-mutations --headless
 ```
